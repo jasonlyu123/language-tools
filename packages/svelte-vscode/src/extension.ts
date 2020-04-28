@@ -64,7 +64,7 @@ export function activate(context: ExtensionContext) {
             await ls.onReady();
             window.showInformationMessage('Svelte language server restarted.');
         }),
-    );
+    );dd
 }
 
 function createLanguageServer(serverOptions: ServerOptions, clientOptions: LanguageClientOptions) {
