@@ -428,7 +428,9 @@ function processInstanceScriptContent(str: MagicString, script: Node): InstanceS
                 required,
             });
         } else {
-            exportedNames.set(name.text, {});
+            exportedNames.set(name.text, {
+                required
+            });
         }
     };
 
@@ -822,15 +824,9 @@ function addComponentExport(
     className?: string,
     componentDocumentation?: string | null,
 ) {
-    const propDef =
-        // Omit partial-wrapper only if both strict mode and ts file, because
-        // in a js file the user has no way of telling the language that
-        // the prop is optional
-        strictMode && isTsFile
-            ? uses$$propsOr$$restProps
+    const propDef = uses$$propsOr$$restProps
                 ? '__sveltets_with_any(render().props)'
-                : 'render().props'
-            : `__sveltets_partial${uses$$propsOr$$restProps ? '_with_any' : ''}(render().props)`;
+                : 'render().props';
 
     const doc = formatComponentDocumentation(componentDocumentation);
 
@@ -948,26 +944,12 @@ function createPropsStr(exportedNames: ExportedNames) {
 
     const returnElements = names.map(([key, value]) => {
         // Important to not use shorthand props for rename functionality
-        return `${value.identifierText || key}: ${key}`;
+        const spreading = `{${value.identifierText || key}: ${key}}`;
+        return '...' + (value.required ? spreading : `__sveltets_partial(${spreading})`);
     });
 
-    if (names.length === 0 || !names.some(([_, value]) => !!value.type)) {
-        // No exports or only `typeof` exports -> omit the `as {...}` completely
-        // -> 2nd case could be that it's because it's a js file without typing, so
-        // omit the types to not have a "cannot use types in jsx" error
-        return `{${returnElements.join(' , ')}}`;
-    }
 
-    const returnElementsType = names.map(([key, value]) => {
-        const identifier = value.identifierText || key;
-        if (!value.type) {
-            return `${identifier}: typeof ${key}`;
-        }
-
-        return `${identifier}${value.required ? '' : '?'}: ${value.type}`;
-    });
-
-    return `{${returnElements.join(' , ')}} as {${returnElementsType.join(', ')}}`;
+    return `{${returnElements.join(' , ')}}`;
 }
 
 export function svelte2tsx(svelte: string, options?: { filename?: string; strictMode?: boolean }) {
