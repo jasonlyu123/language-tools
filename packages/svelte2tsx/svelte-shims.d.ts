@@ -81,12 +81,12 @@ declare function __sveltets_bubbleEventDef<
 
 declare function __sveltets_awaitThen<T>(
     promise: PromiseLike<T>,
-    onfulfilled: (value: T) => any,
+    onfulfilled?: (value: T) => any,
     onrejected?: (value: any) => any
 ): any;
 declare function __sveltets_awaitThen<T>(
     promise: T,
-    onfulfilled: (value: T) => any,
+    onfulfilled?: (value: T) => any,
     onrejected?: (value: never) => any
 ): any;
 

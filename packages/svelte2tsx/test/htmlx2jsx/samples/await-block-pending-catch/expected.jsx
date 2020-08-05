@@ -4,4 +4,10 @@
     <h1>Promise Resolved {value}</h1>
 </>}, (error) => {<>
     <h1>Promise Errored {error}</h1>
+</>})}}
+
+{() => {let _$$p = (somePromise); <>
+    <h1>Promise Pending</h1>
+</>; __sveltets_awaitThen(_$$p, undefined, (error) => {<>
+    <h1>Promise Errored {error}</h1>
 </>})}}</>
