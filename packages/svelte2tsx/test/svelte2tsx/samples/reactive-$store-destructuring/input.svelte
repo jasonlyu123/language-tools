@@ -8,4 +8,7 @@
   $: ({ count2 } = $data)
   let count3;
   $: ({ count3 } = $data)
+
+  $: ({ count4, ...restCount} = $data)
+  $: [count5, ...restCount2] = blubb2
 </script>

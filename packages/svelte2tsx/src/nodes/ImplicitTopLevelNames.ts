@@ -1,5 +1,6 @@
 import ts from 'typescript';
 import MagicString from 'magic-string';
+import { extractIdentifiers, isMember } from '../utils/tsAst';
 
 export class ImplicitTopLevelNames {
     private map = new Map<string, ts.LabeledStatement>();
@@ -13,15 +14,15 @@ export class ImplicitTopLevelNames {
     ) {
         if (ts.isIdentifier(binaryExpr.left)) {
             this.addSingle(binaryExpr.left, node);
-        } else if (ts.isObjectLiteralExpression(binaryExpr.left)) {
-            this.getPropsOfObjectLiteral(binaryExpr.left).map((prop) =>
-                this.addSingle(prop.name, node),
+        } else if (!isMember(binaryExpr.left)) {
+            extractIdentifiers(binaryExpr.left).map((name) =>
+                this.addSingle(name, node),
             );
 
             if (
                 ts.isExpressionStatement(node.statement) &&
                 ts.isParenthesizedExpression(node.statement.expression) &&
-                this.objectLiteralContainsNoTopLevelNames(binaryExpr.left, rootVariables)
+                this.extractNamesContainsNoTopLevelNames(binaryExpr.left, rootVariables)
             ) {
                 const start = node.statement.expression.getStart() + astOffset;
                 str.remove(start, start + 1);
@@ -53,21 +54,12 @@ export class ImplicitTopLevelNames {
         }
     }
 
-    private objectLiteralContainsNoTopLevelNames(
-        node: ts.ObjectLiteralExpression,
+    private extractNamesContainsNoTopLevelNames(
+        node: ts.Expression,
         rootVariables: Set<string>,
     ) {
-        return this.getPropsOfObjectLiteral(node).every(
-            (prop) => !rootVariables.has(prop.name.text),
-        );
-    }
-
-    private getPropsOfObjectLiteral(node: ts.ObjectLiteralExpression) {
-        return (
-            node.properties
-                // TODO could also be a property assignment,
-                // fix if it ever occurs in the wild.
-                .filter(ts.isShorthandPropertyAssignment)
+        return extractIdentifiers(node).every(
+            (prop) => !rootVariables.has(prop.text),
         );
     }
 }

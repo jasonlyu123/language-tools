@@ -9,6 +9,9 @@
   let  { count2 } = __sveltets_invalidate(() => __sveltets_store_get(data))
   let count3;
   $: ({ count3 } = __sveltets_invalidate(() => __sveltets_store_get(data)))
+
+  let  { count4, ...restCount} = __sveltets_invalidate(() => __sveltets_store_get(data))
+  let  [count5, ...restCount2] = __sveltets_invalidate(() => blubb2)
 ;
 () => (<></>);
 return { props: {}, slots: {}, getters: {}, events: {} }}
