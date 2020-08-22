@@ -135,6 +135,9 @@ function processSvelteTemplate(str: MagicString): TemplateProcessResult {
             '&=',
             '^=',
             '|=',
+            '&&=',
+            '||=',
+            '??=',
         ];
         if (
             parent.type == 'AssignmentExpression' &&
@@ -538,6 +541,9 @@ function processInstanceScriptContent(
             [ts.SyntaxKind.AmpersandEqualsToken]: '&',
             [ts.SyntaxKind.CaretEqualsToken]: '^',
             [ts.SyntaxKind.BarEqualsToken]: '|',
+            [ts.SyntaxKind.AmpersandAmpersandEqualsToken]: '&&',
+            [ts.SyntaxKind.BarBarEqualsToken]: '||',
+            [ts.SyntaxKind.QuestionQuestionEqualsToken]: '??',
         };
         if (
             ts.isBinaryExpression(parent) &&

@@ -18,6 +18,9 @@ function render() {
   const handler10 = () => count.set( __sveltets_store_get(count) & myvar)
   const handler11 = () => count.set( __sveltets_store_get(count) ^ myvar)
   const handler12 = () => count.set( __sveltets_store_get(count) | myvar)
+  const handler13 = () => count.set( __sveltets_store_get(count) && myvar)
+  const handler14 = () => count.set( __sveltets_store_get(count) || myvar)
+  const handler15 = () => count.set( __sveltets_store_get(count) ?? myvar)
 ;
 () => (<>
 
@@ -30,9 +33,12 @@ function render() {
 <button onclick={() => count.set( __sveltets_store_get(count) << myvar)}>leftshift</button>
 <button onclick={() => count.set( __sveltets_store_get(count) >> myvar)}>rightshift</button>
 <button onclick={() => count.set( __sveltets_store_get(count) >>> myvar)}>unsigned rightshift</button>
-<button onclick={() => count.set( __sveltets_store_get(count) & myvar)}>AND</button>
-<button onclick={() => count.set( __sveltets_store_get(count) ^ myvar)}>XOR</button>
-<button onclick={() => count.set( __sveltets_store_get(count) | myvar)}>OR</button></>);
+<button onclick={() => count.set( __sveltets_store_get(count) & myvar)}>Bitwise AND</button>
+<button onclick={() => count.set( __sveltets_store_get(count) ^ myvar)}>Bitwise XOR</button>
+<button onclick={() => count.set( __sveltets_store_get(count) | myvar)}>Bitwise OR</button>
+<button onclick={() => count.set( __sveltets_store_get(count) && myvar)}>Logical AND</button>
+<button onclick={() => count.set( __sveltets_store_get(count) || myvar)}>Logical OR</button>
+<button onclick={() => count.set( __sveltets_store_get(count) ?? myvar)}>Logical nullish</button></>);
 return { props: {}, slots: {}, getters: {}, events: {} }}
 
 export default class Input__SvelteComponent_ extends createSvelte2TsxComponent(__sveltets_partial(__sveltets_with_any_event(render))) {
