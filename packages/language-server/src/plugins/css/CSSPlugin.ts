@@ -104,10 +104,10 @@ export class CSSPlugin
     ): CompletionList | null {
         const triggerCharacter = completionContext?.triggerCharacter;
         const triggerKind = completionContext?.triggerKind;
-        const isCustomTriggerCharater = triggerKind === CompletionTriggerKind.TriggerCharacter;
+        const isCustomTriggerCharacter = triggerKind === CompletionTriggerKind.TriggerCharacter;
 
         if (
-            isCustomTriggerCharater &&
+            isCustomTriggerCharacter &&
             triggerCharacter &&
             !this.triggerCharacters.includes(triggerCharacter)
         ) {

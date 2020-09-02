@@ -1,7 +1,8 @@
 import { clamp, isInRange, regexLastIndexOf } from '../../utils';
 import { Position, Range } from 'vscode-languageserver';
-import { Node, getLanguageService, HTMLDocument } from 'vscode-html-languageservice';
+import { Node, HTMLDocument } from 'vscode-html-languageservice';
 import * as path from 'path';
+import { parseHtml } from './htmlparser';
 
 export interface TagInformation {
     content: string;
@@ -38,15 +39,7 @@ function parseAttributes(
     }
 }
 
-const parser = getLanguageService();
 
-/**
- * Parses text as HTML
- */
-export function parseHtml(text: string): HTMLDocument {
-    // We can safely only set getText because only this is used for parsing
-    return parser.parseHTMLDocument(<any>{ getText: () => text });
-}
 
 const regexIf = new RegExp('{#if\\s.*?}', 'gms');
 const regexIfElseIf = new RegExp('{:else if\\s.*?}', 'gms');

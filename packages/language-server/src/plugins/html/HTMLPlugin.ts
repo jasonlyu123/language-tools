@@ -17,6 +17,7 @@ import {
 import { LSConfigManager, LSHTMLConfig } from '../../ls-config';
 import { svelteHtmlDataProvider } from './dataProvider';
 import { HoverProvider, CompletionsProvider } from '../interfaces';
+import { isInsideMoustacheTag } from '../../lib/documents/htmlparser';
 
 export class HTMLPlugin implements HoverProvider, CompletionsProvider {
     private configManager: LSConfigManager;
@@ -141,8 +142,8 @@ export class HTMLPlugin implements HoverProvider, CompletionsProvider {
     private isInsideMoustacheTag(html: HTMLDocument, document: Document, position: Position) {
         const offset = document.offsetAt(position);
         const node = html.findNodeAt(offset);
-        const charactersInNode = document.getText().substring(node.start, offset);
-        return charactersInNode.lastIndexOf('{') > charactersInNode.lastIndexOf('}');
+
+        return isInsideMoustacheTag(document.getText(), node.start, offset);
     }
 
     getDocumentSymbols(document: Document): SymbolInformation[] {
