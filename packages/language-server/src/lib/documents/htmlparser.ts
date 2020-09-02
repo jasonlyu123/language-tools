@@ -6,25 +6,81 @@ const parser = getLanguageService();
  * Parses text as HTML
  */
 export function parseHtml(text: string): HTMLDocument {
+    const preprocessed = preprocess(text);
+
     // We can safely only set getText because only this is used for parsing
-    const parsedDoc = parser.parseHTMLDocument(<any>{ getText: () => text });
+    const parsedDoc = parser.parseHTMLDocument(<any>{ getText: () => preprocessed });
 
-    const checked = new Set<Node>();
+    // const checked = new Set<Node>();
 
-    const start = Date.now();
+    // const start = Date.now();
 
-    for (const child of parsedDoc.roots) {
-        // child won't have the same end as its parent unless it's not closed;
-        const isClosed = child.end === child.parent?.end;
-        if (isClosed) {
-            correction(child, text);
-            checked.add(child);
-        }
-    }
+    // for (const child of parsedDoc.roots) {
+    //     // child won't have the same end as its parent unless it's not closed;
+    //     const isClosed = child.end === child.parent?.end;
+    //     if (isClosed) {
+    //         correction(child, text);
+    //         checked.add(child);
+    //     }
+    // }
 
-    console.log(Date.now() - start);
+    // console.log(Date.now() - start);
 
     return parsedDoc;
+}
+
+interface Tag {
+    start: number;
+    tag: string;
+    endShort: boolean;
+}
+
+function preprocess(text: string) {
+    const scanner = parser.createScanner(text);
+    let result = text;
+    let token = scanner.scan();
+    let currentStartTag: Tag | undefined;
+    let closed: number | undefined;
+
+    while (token !== TokenType.EOS) {
+        const offset = scanner.getTokenOffset();
+
+        if (token === TokenType.StartTag) {
+            const lastTag = currentStartTag;
+            currentStartTag = {
+                tag: scanner.getTokenText(),
+                endShort: false,
+                start: offset
+            };
+
+            if (lastTag) {
+                const contentWithin = text.substring(lastTag.start, closed ?? offset);
+                if (lastTag.endShort && contentWithin.includes('/>')) {
+                    result = result.substr(0, lastTag.start) +
+                        contentWithin
+                            .split('/>').map(s => s.replace(/>/g, ' '))
+                            .join('/>') +
+                        result.substring(offset);
+                }
+            }
+
+            closed = undefined;
+        }
+
+        if (token === TokenType.EndTagOpen) {
+            closed = offset;
+        }
+
+        if (token === TokenType.StartTagClose) {
+            if (currentStartTag && isInsideMoustacheTag(text, currentStartTag.start, offset)) {
+                currentStartTag.endShort = true;
+            }
+        }
+
+        token = scanner.scan();
+    }
+
+    return result;
 }
 
 function correction(nonClosed: Node, text: string) {
