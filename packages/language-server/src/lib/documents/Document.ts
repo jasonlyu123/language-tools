@@ -1,8 +1,9 @@
 import { urlToPath } from '../../utils';
 import { WritableDocument } from './DocumentBase';
-import { extractScriptTags, extractStyleTag, TagInformation, parseHtml } from './utils';
+import { extractScriptTags, extractStyleTag, TagInformation } from './utils';
 import { SvelteConfig, loadConfig } from './configLoader';
 import { HTMLDocument } from 'vscode-html-languageservice';
+import { parseHtml } from './htmlparser';
 
 /**
  * Represents a text document contains a svelte component.

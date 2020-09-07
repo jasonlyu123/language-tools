@@ -6,25 +6,88 @@ const parser = getLanguageService();
  * Parses text as HTML
  */
 export function parseHtml(text: string): HTMLDocument {
-    // We can safely only set getText because only this is used for parsing
-    const parsedDoc = parser.parseHTMLDocument(<any>{ getText: () => text });
-
-    const checked = new Set<Node>();
-
     const start = Date.now();
-
-    for (const child of parsedDoc.roots) {
-        // child won't have the same end as its parent unless it's not closed;
-        const isClosed = child.end === child.parent?.end;
-        if (isClosed) {
-            correction(child, text);
-            checked.add(child);
-        }
-    }
-
+    const preprocessed = preprocess(text);
     console.log(Date.now() - start);
 
+    // We can safely only set getText because only this is used for parsing
+    const parsedDoc = parser.parseHTMLDocument(<any>{ getText: () => preprocessed });
+
+    // const checked = new Set<Node>();
+
+    // const start = Date.now();
+
+    // for (const child of parsedDoc.roots) {
+    //     // child won't have the same end as its parent unless it's not closed;
+    //     const isClosed = child.end === child.parent?.end;
+    //     if (isClosed) {
+    //         correction(child, text);
+    //         checked.add(child);
+    //     }
+    // }
+
+    // console.log(Date.now() - start);
+
     return parsedDoc;
+}
+
+interface Tag {
+    start: number;
+    tag: string;
+    endShort: boolean;
+}
+
+const OPEN_TAG_SELF_CLOSE = '/>';
+
+function preprocess(text: string) {
+    const scanner = parser.createScanner(text);
+    let result = text;
+    let token = scanner.scan();
+    let currentStartTag: Tag | undefined;
+
+    while (token !== TokenType.EOS) {
+        const offset = scanner.getTokenOffset();
+
+        if (token === TokenType.StartTagOpen) {
+            removeEnd(offset);
+            currentStartTag = {
+                tag: scanner.getTokenText(),
+                endShort: false,
+                start: offset
+            };
+        }
+
+        if (token === TokenType.StartTagClose) {
+            if (currentStartTag && isInsideMoustacheTag(text, currentStartTag.start, offset)) {
+                currentStartTag.endShort = true;
+            }
+        }
+
+        if (token === TokenType.EndTagOpen) {
+            removeEnd(offset);
+            currentStartTag = undefined;
+        }
+
+        token = scanner.scan();
+    }
+
+    return result;
+
+    function removeEnd(offset: number) {
+        if (!currentStartTag) {
+            return;
+        }
+
+        const contentWithin = text.substring(currentStartTag.start, offset);
+        if (currentStartTag.endShort && contentWithin.includes(OPEN_TAG_SELF_CLOSE)) {
+            result = result.substr(0, currentStartTag.start) +
+                contentWithin
+                    .split(OPEN_TAG_SELF_CLOSE)
+                    .map(s => s.replace(/>/g, ' '))
+                    .join(OPEN_TAG_SELF_CLOSE) +
+                result.substring(offset);
+        }
+    }
 }
 
 function correction(nonClosed: Node, text: string) {
