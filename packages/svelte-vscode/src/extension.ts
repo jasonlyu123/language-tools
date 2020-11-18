@@ -88,8 +88,7 @@ export function activate(context: ExtensionContext) {
         documentSelector: [{ scheme: 'file', language: 'svelte' }],
         revealOutputChannelOn: RevealOutputChannelOn.Never,
         synchronize: {
-            configurationSection: ['svelte'],
-            fileEvents: workspace.createFileSystemWatcher('{**/*.js,**/*.ts}', false, false, false)
+            configurationSection: ['svelte']
         },
         initializationOptions: {
             config: workspace.getConfiguration('svelte.plugin'),

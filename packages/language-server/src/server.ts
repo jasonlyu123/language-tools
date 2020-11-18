@@ -15,7 +15,8 @@ import {
     TextDocumentIdentifier,
     TextDocumentPositionParams,
     TextDocumentSyncKind,
-    WorkspaceEdit
+    WorkspaceEdit,
+    DidChangeWatchedFilesNotification
 } from 'vscode-languageserver';
 import { DiagnosticsManager } from './lib/DiagnosticsManager';
 import { Document, DocumentManager } from './lib/documents';
@@ -85,6 +86,7 @@ export function startServer(options?: LSOptions) {
     const configManager = new LSConfigManager();
     const pluginHost = new PluginHost(docManager, configManager);
     let sveltePlugin: SveltePlugin = undefined as any;
+    let clientSupportsWatchFileDynamicRegistration = false;
 
     connection.onInitialize((evt) => {
         const workspaceUris = evt.workspaceFolders?.map((folder) => folder.uri.toString()) ?? [
@@ -116,6 +118,9 @@ export function startServer(options?: LSOptions) {
         pluginHost.register(new TypeScriptPlugin(docManager, configManager, workspaceUris));
 
         const clientSupportApplyEditCommand = !!evt.capabilities.workspace?.applyEdit;
+
+        clientSupportsWatchFileDynamicRegistration =
+            !!evt.capabilities.workspace?.didChangeWatchedFiles?.dynamicRegistration;
 
         return {
             capabilities: {
@@ -197,6 +202,14 @@ export function startServer(options?: LSOptions) {
                 }
             }
         };
+    });
+
+    connection.onInitialized(() => {
+        if (clientSupportsWatchFileDynamicRegistration) {
+            connection!.client.register(DidChangeWatchedFilesNotification.type, {
+                watchers: [{ globPattern: '{**/*.js,**/*.ts}' }]
+            });
+        }
     });
 
     connection.onRenameRequest((req) =>
@@ -282,6 +295,7 @@ export function startServer(options?: LSOptions) {
     );
 
     connection.onDidChangeWatchedFiles((para) => {
+        console.log(para);
         const onWatchFileChangesParas = para.changes.map((change) => ({
             fileName: urlToPath(change.uri),
             changeType: change.type
