@@ -15,7 +15,7 @@ import { CompletionsProviderImpl } from '../../../../src/plugins/typescript/feat
 import { LSAndTSDocResolver } from '../../../../src/plugins/typescript/LSAndTSDocResolver';
 import { pathToUrl } from '../../../../src/utils';
 import { CodeActionsProviderImpl } from '../../../../src/plugins/typescript/features/CodeActionsProvider';
-import { LSConfigManager, TsUserPreferencesConfig } from '../../../../src/ls-config';
+import { LSConfigManager, TsPreferencesConfig } from '../../../../src/ls-config';
 
 const testFilesDir = join(__dirname, '..', 'testfiles', 'preferences');
 
@@ -35,7 +35,7 @@ describe('ts user preferences', () => {
 
     const expectedImportEdit = "import { definition } from '~/definition/index';";
 
-    function getPreferences(): TsUserPreferencesConfig {
+    function getPreferences(): TsPreferencesConfig {
         return {
             importModuleSpecifier: 'non-relative',
             importModuleSpecifierEnding: 'index',
@@ -45,7 +45,9 @@ describe('ts user preferences', () => {
 
     function createLSAndTSDocResolver(docManager: DocumentManager) {
         const configManager = new LSConfigManager();
-        configManager.updateTsUserPreferences('typescript', getPreferences());
+        configManager.updateTsUserPreferences('typescript', {
+            preferences: getPreferences()
+        });
         return new LSAndTSDocResolver(docManager, [pathToUrl(testFilesDir)], configManager);
     }
 

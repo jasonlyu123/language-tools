@@ -24,7 +24,13 @@ import {
     SignatureHelp,
     SignatureHelpContext
 } from 'vscode-languageserver';
-import { LSConfig, LSConfigManager, TsUserConfigLang, TsUserPreferencesConfig } from '../ls-config';
+import {
+    LSConfig,
+    LSConfigManager,
+    TsUserConfigLang,
+    TsPreferencesConfig,
+    TsSuggestConfig
+} from '../ls-config';
 import { DocumentManager } from '../lib/documents';
 import {
     LSProvider,
@@ -66,11 +72,12 @@ export class PluginHost implements LSProvider, OnWatchFileChanges {
     }
 
     updateTsUserPreferences(config: Record<TsUserConfigLang, {
-        preferences: TsUserPreferencesConfig
+        preferences: TsPreferencesConfig,
+        suggest: TsSuggestConfig
     }>) {
         (['typescript', 'javascript'] as const).forEach((lang) => {
-            if (config[lang]?.preferences) {
-                this.config.updateTsUserPreferences(lang, config[lang].preferences);
+            if (config[lang]) {
+                this.config.updateTsUserPreferences(lang, config[lang]);
             }
         });
     }

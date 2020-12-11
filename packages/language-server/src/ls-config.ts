@@ -91,7 +91,7 @@ export interface LSTypescriptConfig {
     };
     signatureHelp: {
         enable: boolean;
-    }
+    };
 }
 
 export interface LSCSSConfig {
@@ -164,7 +164,7 @@ export interface LSSvelteConfig {
     };
 }
 
-export interface TsUserPreferencesConfig {
+export interface TsPreferencesConfig {
     importModuleSpecifier: UserPreferences['importModuleSpecifierPreference'];
     importModuleSpecifierEnding: UserPreferences['importModuleSpecifierEnding'];
     quoteStyle: UserPreferences['quotePreference'];
@@ -172,6 +172,14 @@ export interface TsUserPreferencesConfig {
      * only in typescript config
      */
     includePackageJsonAutoImports?: UserPreferences['includePackageJsonAutoImports'];
+}
+
+export interface TsSuggestConfig {
+    includeAutomaticOptionalChainCompletions?: boolean;
+    completeFunctionCalls?: boolean;
+    names?: boolean;
+    paths?: boolean;
+    autoImports?: boolean;
 }
 
 export type TsUserConfigLang = 'typescript' | 'javascript';
@@ -182,13 +190,18 @@ type DeepPartial<T> = T extends CompilerWarningsSettings
           [P in keyof T]?: DeepPartial<T[P]>;
       };
 
+interface VsCodeTsConfig {
+    preferences?: TsPreferencesConfig;
+    suggest?: TsSuggestConfig;
+}
+
 export class LSConfigManager {
     private config: LSConfig = defaultLSConfig;
     private listeners: Array<(config: LSConfigManager) => void> = [];
     private tsUserPreferences: Record<TsUserConfigLang, UserPreferences> = {
         typescript: {},
         javascript: {}
-    }
+    };
 
     /**
      * Updates config.
@@ -237,14 +250,24 @@ export class LSConfigManager {
         this.listeners.push(callback);
     }
 
-    updateTsUserPreferences(lang: TsUserConfigLang, config: TsUserPreferencesConfig) {
-        this.tsUserPreferences[lang] = Object.assign(this.tsUserPreferences[lang], {
-            importModuleSpecifierPreference: config.importModuleSpecifier,
-            importModuleSpecifierEnding: config.importModuleSpecifierEnding,
-            includePackageJsonAutoImports: config.includePackageJsonAutoImports,
-            quotePreference: config.quoteStyle
+    updateTsUserPreferences(lang: TsUserConfigLang, config: VsCodeTsConfig) {
+        const { preferences, suggest } = config;
 
-        } as UserPreferences);
+        if (preferences) {
+            this.tsUserPreferences[lang] = Object.assign(this.tsUserPreferences[lang], {
+                importModuleSpecifierPreference: preferences.importModuleSpecifier,
+                importModuleSpecifierEnding: preferences.importModuleSpecifierEnding,
+                includePackageJsonAutoImports: preferences.includePackageJsonAutoImports,
+                quotePreference: preferences.quoteStyle
+            } as UserPreferences);
+        }
+        if (suggest) {
+            this.tsUserPreferences[lang] = Object.assign(this.tsUserPreferences[lang], {
+                includeAutomaticOptionalChainCompletions:
+                    suggest.includeAutomaticOptionalChainCompletions,
+                includeCompletionsForModuleExports: suggest.autoImports
+            } as UserPreferences);
+        }
     }
 
     getTsUserPreferences(lang: TsUserConfigLang) {
