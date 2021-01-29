@@ -47,7 +47,10 @@ import {
     UpdateImportsProvider,
     OnWatchFileChangesPara,
     SemanticTokensProvider,
-    UpdateTsOrJsFile
+    UpdateTsOrJsFile,
+    CodeLensProvider,
+    AppCodeLens,
+    Resolvable
 } from '../interfaces';
 import { SnapshotFragment } from './DocumentSnapshot';
 import { CodeActionsProviderImpl } from './features/CodeActionsProvider';
@@ -67,6 +70,7 @@ import { SelectionRangeProviderImpl } from './features/SelectionRangeProvider';
 import { SignatureHelpProviderImpl } from './features/SignatureHelpProvider';
 import { SnapshotManager } from './SnapshotManager';
 import { SemanticTokensProviderImpl } from './features/SemanticTokensProvider';
+import { CodeLensProviderImpl } from './features/CodeLensProvider';
 
 export class TypeScriptPlugin
     implements
@@ -81,6 +85,7 @@ export class TypeScriptPlugin
         SelectionRangeProvider,
         SignatureHelpProvider,
         SemanticTokensProvider,
+        CodeLensProvider,
         OnWatchFileChanges,
         CompletionsProvider<CompletionEntryWithIdentifer>,
         UpdateTsOrJsFile {
@@ -96,6 +101,7 @@ export class TypeScriptPlugin
     private readonly selectionRangeProvider: SelectionRangeProviderImpl;
     private readonly signatureHelpProvider: SignatureHelpProviderImpl;
     private readonly semanticTokensProvider: SemanticTokensProviderImpl;
+    private readonly codLensProvider: CodeLensProviderImpl;
 
     constructor(
         docManager: DocumentManager,
@@ -117,6 +123,7 @@ export class TypeScriptPlugin
         this.selectionRangeProvider = new SelectionRangeProviderImpl(this.lsAndTsDocResolver);
         this.signatureHelpProvider = new SignatureHelpProviderImpl(this.lsAndTsDocResolver);
         this.semanticTokensProvider = new SemanticTokensProviderImpl(this.lsAndTsDocResolver);
+        this.codLensProvider = new CodeLensProviderImpl(this.lsAndTsDocResolver);
     }
 
     async getDiagnostics(document: Document): Promise<Diagnostic[]> {
@@ -421,6 +428,15 @@ export class TypeScriptPlugin
         }
 
         return this.semanticTokensProvider.getSemanticTokens(textDocument, range);
+    }
+
+    getCodeLens(document: Document): Resolvable<AppCodeLens[] | null> {
+        return this.codLensProvider.getCodeLens(document);
+    }
+    resolveCodeLens(
+        document: Document, codeLensToResolve: AppCodeLens
+    ): Resolvable<AppCodeLens<any>> {
+        return this.codLensProvider.resolveCodeLens(document, codeLensToResolve);
     }
 
     private getLSAndTSDoc(document: Document) {

@@ -2,6 +2,7 @@ import { flatten } from 'lodash';
 import {
     CodeAction,
     CodeActionContext,
+    CodeLens,
     Color,
     ColorInformation,
     ColorPresentation,
@@ -30,6 +31,7 @@ import { DocumentManager } from '../lib/documents';
 import { Logger } from '../logger';
 import { regexLastIndexOf } from '../utils';
 import {
+    AppCodeLens,
     AppCompletionItem,
     FileRename,
     LSPProviderConfig,
@@ -413,6 +415,32 @@ export class PluginHost implements LSProvider, OnWatchFileChanges {
             [document, range],
             ExecuteMode.FirstNonNull
         );
+    }
+
+    async getCodeLens(textDocument: TextDocumentIdentifier) {
+        const document = this.getDocument(textDocument.uri);
+        if (!document) {
+            throw new Error('Cannot call methods on an unopened document');
+        }
+
+        return await this.execute<CodeLens[]>(
+            'getCodeLens',
+            [document],
+            ExecuteMode.FirstNonNull
+        );
+    }
+
+    async resolveCodeLens(textDocument: TextDocumentIdentifier, codeLens: AppCodeLens) {
+        const document = this.getDocument(textDocument.uri);
+        if (!document) {
+            throw new Error('Cannot call methods on an unopened document');
+        }
+
+        return await this.execute<AppCodeLens>(
+            'resolveCodeLens',
+            [document, codeLens],
+            ExecuteMode.FirstNonNull
+        ) ?? codeLens;
     }
 
     onWatchFileChanges(onWatchFileChangesParas: OnWatchFileChangesPara[]): void {

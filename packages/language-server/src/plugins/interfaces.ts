@@ -26,7 +26,8 @@ import {
     TextEdit,
     WorkspaceEdit,
     SelectionRange,
-    SignatureHelp
+    SignatureHelp,
+    CodeLens
 } from 'vscode-languageserver-types';
 import { Document } from '../lib/documents';
 
@@ -34,6 +35,10 @@ export type Resolvable<T> = T | Promise<T>;
 
 export interface AppCompletionItem<T extends TextDocumentIdentifier = any> extends CompletionItem {
     data?: T;
+}
+
+export interface AppCodeLens<T extends TextDocumentIdentifier = any> extends CodeLens {
+    data?: T
 }
 
 export interface AppCompletionList<T extends TextDocumentIdentifier = any> extends CompletionList {
@@ -151,6 +156,11 @@ export interface SemanticTokensProvider {
     getSemanticTokens(textDocument: Document, range?: Range): Resolvable<SemanticTokens | null>;
 }
 
+export interface CodeLensProvider<T extends AppCodeLens = AppCodeLens> {
+    getCodeLens(document: Document): Resolvable<T[] | null>
+    resolveCodeLens(document: Document, codeLensToResolve: T): Resolvable<T>
+}
+
 export interface OnWatchFileChangesPara {
     fileName: string;
     changeType: FileChangeType;
@@ -177,7 +187,8 @@ type ProviderBase = DiagnosticsProvider &
     FindReferencesProvider &
     RenameProvider &
     SignatureHelpProvider &
-    SemanticTokensProvider;
+    SemanticTokensProvider &
+    CodeLensProvider;
 
 export type LSProvider = ProviderBase & BackwardsCompatibleDefinitionsProvider;
 

@@ -29,7 +29,8 @@ import {
     PluginHost,
     SveltePlugin,
     TypeScriptPlugin,
-    OnWatchFileChangesPara
+    OnWatchFileChangesPara,
+    AppCodeLens
 } from './plugins';
 import { urlToPath } from './utils';
 
@@ -194,6 +195,9 @@ export function startServer(options?: LSOptions) {
                     legend: getSemanticTokenLegends(),
                     range: true,
                     full: true
+                },
+                codeLensProvider: {
+                    resolveProvider: true
                 }
             }
         };
@@ -277,6 +281,20 @@ export function startServer(options?: LSOptions) {
     connection.onSelectionRanges((evt) =>
         pluginHost.getSelectionRanges(evt.textDocument, evt.positions)
     );
+
+    connection.onCodeLens((evt) =>
+        pluginHost.getCodeLens(evt.textDocument)
+    );
+
+    connection.onCodeLensResolve((codeLens) => {
+        const data = (codeLens as AppCodeLens).data as TextDocumentIdentifier;
+
+        if (!data) {
+            return codeLens;
+        }
+
+        return pluginHost.resolveCodeLens(data, codeLens);
+    });
 
     const diagnosticsManager = new DiagnosticsManager(
         connection.sendDiagnostics,
