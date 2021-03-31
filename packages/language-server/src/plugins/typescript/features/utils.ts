@@ -14,7 +14,7 @@ import { LSAndTSDocResolver } from '../LSAndTSDocResolver';
  * return the snapshot of that component.
  */
 export function getComponentAtPosition(
-    lsAndTsDocResovler: LSAndTSDocResolver,
+    lsAndTsDocResolver: LSAndTSDocResolver,
     lang: ts.LanguageService,
     doc: Document,
     tsDoc: SvelteDocumentSnapshot,
@@ -47,7 +47,7 @@ export function getComponentAtPosition(
         return null;
     }
 
-    const snapshot = lsAndTsDocResovler.getSnapshot(def.fileName);
+    const snapshot = lsAndTsDocResolver.getSnapshot(def.fileName);
     if (!(snapshot instanceof SvelteDocumentSnapshot)) {
         return null;
     }

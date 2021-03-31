@@ -176,7 +176,7 @@ export function extractStyleTag(source: string, html?: HTMLDocument): TagInforma
 /**
  * Get the line and character based on the offset
  * @param offset The index of the position
- * @param text The text for which the position should be retrived
+ * @param text The text for which the position should be retrieved
  */
 export function positionAt(offset: number, text: string): Position {
     offset = clamp(offset, 0, text.length);
@@ -206,7 +206,7 @@ export function positionAt(offset: number, text: string): Position {
 /**
  * Get the offset of the line and character position
  * @param position Line and character position
- * @param text The text for which the offset should be retrived
+ * @param text The text for which the offset should be retrieved
  */
 export function offsetAt(position: Position, text: string): number {
     const lineOffsets = getLineOffsets(text);

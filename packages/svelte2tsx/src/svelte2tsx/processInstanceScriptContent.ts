@@ -253,7 +253,7 @@ export function processInstanceScriptContent(
         //We haven't been resolved, we must be a store read/write, handle it.
         handleStore(node, parent);
         const storename = node.getText().slice(1);
-        implicitStoreValues.addStoreAcess(storename);
+        implicitStoreValues.addStoreAccess(storename);
     };
 
     const handleIdentifier = (ident: ts.Identifier, parent: ts.Node) => {

@@ -39,14 +39,12 @@ export function getCompletions(
         .getText()
         // use last 10 characters, should cover 99% of all cases
         .substr(Math.max(offset - 10, 0), Math.min(offset, 10));
-    const notPreceededByOpeningBracket = !/[\s\S]*{\s*[#:/@]\w*$/.test(
-        lastCharactersBeforePosition
-    );
+    const notPrecededByOpeningBracket = !/[\s\S]*{\s*[#:/@]\w*$/.test(lastCharactersBeforePosition);
     if (isInStyleOrScript) {
         return null;
     }
 
-    if (notPreceededByOpeningBracket) {
+    if (notPrecededByOpeningBracket) {
         return getComponentDocumentationCompletions();
     }
 

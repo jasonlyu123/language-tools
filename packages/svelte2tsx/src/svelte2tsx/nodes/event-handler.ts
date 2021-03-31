@@ -14,7 +14,7 @@ export class EventHandler {
             } else {
                 this.bubbledEvents.set(
                     eventName,
-                    getEventDefExpressionForNonCompoent(eventName, parent)
+                    getEventDefExpressionForNonComponent(eventName, parent)
                 );
             }
         }
@@ -58,7 +58,7 @@ export class EventHandler {
     }
 }
 
-function getEventDefExpressionForNonCompoent(eventName: string, ele: Node) {
+function getEventDefExpressionForNonComponent(eventName: string, ele: Node) {
     switch (ele.type) {
         case 'Element':
             return `__sveltets_mapElementEvent('${eventName}')`;

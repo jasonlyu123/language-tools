@@ -53,13 +53,13 @@ export function isNotNullOrUndefined<T>(val: T | undefined | null): val is T {
  * a second function determines it should.
  *
  * @param fn The function with it's argument
- * @param determineIfSame The function which determines if the previous invocation should be canceld or not
- * @param miliseconds Number of miliseconds to debounce
+ * @param determineIfSame The function which determines if the previous invocation should be canceled or not
+ * @param milliseconds Number of milliseconds to debounce
  */
 export function debounceSameArg<T>(
     fn: (arg: T) => void,
     shouldCancelPrevious: (newArg: T, prevArg?: T) => boolean,
-    miliseconds: number
+    milliseconds: number
 ): (arg: T) => void {
     let timeout: any;
     let prevArg: T | undefined;
@@ -73,7 +73,7 @@ export function debounceSameArg<T>(
         timeout = setTimeout(() => {
             fn(arg);
             prevArg = undefined;
-        }, miliseconds);
+        }, milliseconds);
     };
 }
 

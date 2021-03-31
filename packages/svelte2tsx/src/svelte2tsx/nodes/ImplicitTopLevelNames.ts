@@ -27,7 +27,7 @@ export class ImplicitTopLevelNames {
                 str.remove(pos + astOffset, pos + astOffset + 2);
                 str.prependRight(pos + astOffset, 'let ');
 
-                this.removeBracesFromParenthizedExpression(node, astOffset, str);
+                this.removeBracesFromParenthesizedExpression(node, astOffset, str);
             } else {
                 implicitTopLevelNames.forEach((name) => {
                     str.prependRight(pos + astOffset, `let ${name};\n`);
@@ -40,7 +40,7 @@ export class ImplicitTopLevelNames {
         return names.length === implicitTopLevelNames.length;
     }
 
-    private removeBracesFromParenthizedExpression(
+    private removeBracesFromParenthesizedExpression(
         node: ts.LabeledStatement,
         astOffset: number,
         str: MagicString

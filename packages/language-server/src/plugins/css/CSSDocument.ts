@@ -62,7 +62,7 @@ export class CSSDocument extends ReadableDocument implements DocumentMapper {
     }
 
     /**
-     * Returns the length of the fragment as calculated from the start and end positon
+     * Returns the length of the fragment as calculated from the start and end position
      */
     getTextLength(): number {
         return this.styleInfo.end - this.styleInfo.start;

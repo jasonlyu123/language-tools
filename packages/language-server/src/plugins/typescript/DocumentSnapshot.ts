@@ -22,7 +22,7 @@ import {
 } from './utils';
 
 /**
- * An error which occured while trying to parse/preprocess the svelte file contents.
+ * An error which occurred while trying to parse/preprocess the svelte file contents.
  */
 export interface ParserError {
     message: string;

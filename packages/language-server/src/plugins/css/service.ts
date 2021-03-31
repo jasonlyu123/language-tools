@@ -5,11 +5,11 @@ import {
     LanguageService,
     ICSSDataProvider
 } from 'vscode-css-languageservice';
-import { pesudoClass } from './features/svelte-selectors';
+import { pseudoClass } from './features/svelte-selectors';
 
 const customDataProvider: ICSSDataProvider = {
     providePseudoClasses() {
-        return pesudoClass;
+        return pseudoClass;
     },
     provideProperties() {
         return [];
