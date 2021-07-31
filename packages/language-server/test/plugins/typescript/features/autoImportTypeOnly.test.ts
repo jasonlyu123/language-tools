@@ -49,7 +49,7 @@ describe.only('auto import type only', () => {
 
         assert.deepStrictEqual(item.additionalTextEdits, <TextEdit[]>[
             {
-                newText: `import type { Type } from "./to-import"${ts.sys.newLine}`,
+                newText: `import type { Type } from "./to-import";${ts.sys.newLine}`,
                 range: {
                     start: {
                         line: 2,
@@ -76,7 +76,7 @@ describe.only('auto import type only', () => {
 
         assert.deepStrictEqual(item.additionalTextEdits, <TextEdit[]>[
             {
-                newText: `import { Value } from "./to-import"${ts.sys.newLine}`,
+                newText: `import { Value } from "./to-import";${ts.sys.newLine}`,
                 range: {
                     start: {
                         line: 2,
@@ -103,7 +103,7 @@ describe.only('auto import type only', () => {
 
         assert.deepStrictEqual(item.additionalTextEdits, <TextEdit[]>[
             {
-                newText: ' ,Type2',
+                newText: ', Type2',
                 range: {
                     start: {
                         line: 2,
@@ -130,7 +130,7 @@ describe.only('auto import type only', () => {
 
         assert.deepStrictEqual(item.additionalTextEdits, <TextEdit[]>[
             {
-                newText: ' ,Value2',
+                newText: ', Value2',
                 range: {
                     start: {
                         line: 2,

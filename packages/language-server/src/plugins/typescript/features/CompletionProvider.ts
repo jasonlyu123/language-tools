@@ -431,21 +431,23 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionEn
 
         const actions = detail?.codeActions;
         const isImport = !!detail?.source;
-        const typeOnlyAutoImportCheck = createTypeOnlyAutoImportChecker(lang, document, fragment);
+        const typeOnlyAutoImportCheck = createTypeOnlyAutoImportChecker(lang, filePath);
 
         if (actions) {
             const edit: TextEdit[] = [];
 
             for (const action of actions) {
                 for (const change of action.changes) {
+                    const changes = isImport
+                        ? typeOnlyAutoImportCheck(Array.from(change.textChanges))
+                        : Array.from(change.textChanges);
                     edit.push(
                         ...this.codeActionChangesToTextEdit(
                             document,
                             fragment,
-                            change,
+                            changes,
                             isImport,
-                            comp.position,
-                            typeOnlyAutoImportCheck
+                            comp.position
                         )
                     );
                 }
@@ -482,16 +484,15 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionEn
     private codeActionChangesToTextEdit(
         doc: Document,
         fragment: SvelteSnapshotFragment,
-        changes: ts.FileTextChanges,
+        changes: ts.TextChange[],
         isImport: boolean,
-        originalTriggerPosition: Position,
-        typeOnlyAutoImportCheck: (change: ts.TextChange) => ts.TextChange
+        originalTriggerPosition: Position
     ): TextEdit[] {
-        return changes.textChanges.map((change) =>
+        return changes.map((change) =>
             this.codeActionChangeToTextEdit(
                 doc,
                 fragment,
-                isImport ? change : typeOnlyAutoImportCheck(change),
+                change,
                 isImport,
                 originalTriggerPosition
             )
