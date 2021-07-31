@@ -34,6 +34,7 @@ import {
     scriptElementKindToCompletionItemKind
 } from '../utils';
 import { getJsDocTemplateCompletion } from './getJsDocTemplateCompletion';
+import { createTypeOnlyAutoImportChecker } from './typeOnlyAutoImportChecker';
 import { getComponentAtPosition, isPartOfImportStatement } from './utils';
 
 export interface CompletionEntryWithIdentifer extends ts.CompletionEntry, TextDocumentIdentifier {
@@ -430,6 +431,7 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionEn
 
         const actions = detail?.codeActions;
         const isImport = !!detail?.source;
+        const typeOnlyAutoImportCheck = createTypeOnlyAutoImportChecker(lang, document, fragment);
 
         if (actions) {
             const edit: TextEdit[] = [];
@@ -442,7 +444,8 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionEn
                             fragment,
                             change,
                             isImport,
-                            comp.position
+                            comp.position,
+                            typeOnlyAutoImportCheck
                         )
                     );
                 }
@@ -481,13 +484,14 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionEn
         fragment: SvelteSnapshotFragment,
         changes: ts.FileTextChanges,
         isImport: boolean,
-        originalTriggerPosition: Position
+        originalTriggerPosition: Position,
+        typeOnlyAutoImportCheck: (change: ts.TextChange) => ts.TextChange
     ): TextEdit[] {
         return changes.textChanges.map((change) =>
             this.codeActionChangeToTextEdit(
                 doc,
                 fragment,
-                change,
+                isImport ? change : typeOnlyAutoImportCheck(change),
                 isImport,
                 originalTriggerPosition
             )
