@@ -431,7 +431,11 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionEn
 
         const actions = detail?.codeActions;
         const isImport = !!detail?.source;
-        const typeOnlyAutoImportCheck = createTypeOnlyAutoImportChecker(lang, filePath);
+        const typeOnlyAutoImportCheck = createTypeOnlyAutoImportChecker(
+            lang,
+            filePath,
+            userPreferences
+        );
 
         if (actions) {
             const edit: TextEdit[] = [];

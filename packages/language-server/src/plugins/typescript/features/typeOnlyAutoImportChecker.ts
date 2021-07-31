@@ -1,10 +1,11 @@
-import ts, { SourceFile } from 'typescript';
+import ts from 'typescript';
 import { isNotNullOrUndefined } from '../../../utils';
 import { findContainingNode } from './utils';
 
 export function createTypeOnlyAutoImportChecker(
     lang: ts.LanguageService,
-    filePath: string
+    filePath: string,
+    preference: ts.UserPreferences
 ): (change: ts.TextChange[]) => ts.TextChange[] {
     const identity = (v: ts.TextChange[]) => v;
 
@@ -39,7 +40,7 @@ export function createTypeOnlyAutoImportChecker(
         );
         const moduleSpecifier = importDeclaration?.moduleSpecifier;
 
-        if (!moduleSpecifier || !ts.isStringLiteral(moduleSpecifier)) {
+        if (!importDeclaration || !moduleSpecifier || !ts.isStringLiteral(moduleSpecifier)) {
             return changes;
         }
 
@@ -62,6 +63,7 @@ export function createTypeOnlyAutoImportChecker(
         }
 
         const exports = typeChecker.getExportsOfModule(importingModule);
+        // TODO: default import
         const newImportName = addChange.newText.replace(',', '').trim();
         const symbol = exports.find((identifier) => identifier.getEscapedName() === newImportName);
 
@@ -72,6 +74,10 @@ export function createTypeOnlyAutoImportChecker(
         const isTypeOnly = !!(
             symbol.flags & ts.SymbolFlags.TypeAlias || symbol.flags & ts.SymbolFlags.Interface
         );
+
+        if (isTypeOnly && importDeclaration.importClause?.isTypeOnly) {
+            return changes;
+        }
 
         const existingImports = findImportDeclarationsForModule(
             lang,
@@ -85,22 +91,23 @@ export function createTypeOnlyAutoImportChecker(
         const existingNamedImports = existingImports
             .filter((clause) => clause.isTypeOnly === isTypeOnly)
             .map((clause) => clause.namedBindings)
-            .filter(
-                (binding): binding is ts.NamedImports => !!binding && ts.isNamedImports(binding)
-            );
+            .filter(isNotNullOrUndefined)
+            .filter(ts.isNamedImports);
 
         const [first] = existingNamedImports;
 
         if (!first) {
-            const start = sourceFile.getFullText().indexOf('\n', existingImports[0].getEnd()) + 1;
+            const lineEnd = sourceFile.getFullText().indexOf('\n', existingImports[0].getEnd());
+            const quote = preference.quotePreference === 'single' ? "'" : '"';
             const newText =
                 `import ${isTypeOnly ? 'type ' : ''}` +
-                `{ ${newImportName} } from "${moduleSpecifier.text}";${ts.sys.newLine}`;
+                `{ ${newImportName} } from ${quote}${moduleSpecifier.text}${quote};${ts.sys.newLine}`;
+
             return [
                 {
                     newText,
                     span: {
-                        start,
+                        start: lineEnd + 1,
                         length: 0
                     }
                 }
@@ -129,7 +136,7 @@ function findImportDeclarationsForModule(
     lang: ts.LanguageService,
     originalActionModuleSpecifier: ts.StringLiteral,
     importingModulePath: string,
-    sourceFile: SourceFile
+    sourceFile: ts.SourceFile
 ) {
     return sourceFile.statements
         .filter(ts.isImportDeclaration)
