@@ -1,10 +1,10 @@
 import ts from 'typescript';
 import { CancellationToken, Diagnostic, DiagnosticSeverity } from 'vscode-languageserver';
-import { Document, getTextInRange, isRangeInTag, mapRangeToOriginal } from '../../../lib/documents';
+import { Document, isRangeInTag, mapRangeToOriginal } from '../../../lib/documents';
 import { DiagnosticsProvider } from '../../interfaces';
 import { LSAndTSDocResolver } from '../LSAndTSDocResolver';
 import { convertRange, getDiagnosticTag, mapSeverity } from '../utils';
-import { SvelteDocumentSnapshot, SvelteSnapshotFragment } from '../DocumentSnapshot';
+import { SvelteSnapshotFragment } from '../DocumentSnapshot';
 import { isInGeneratedCode, isAfterSvelte2TsxPropsReturn } from './utils';
 import { regexIndexOf, swapRangeStartEndIfNecessary } from '../../../utils';
 
@@ -59,7 +59,7 @@ export class DiagnosticsProviderImpl implements DiagnosticsProvider {
             }))
             .map(mapRange(fragment, document))
             .filter(hasNoNegativeLines)
-            .filter(isNoFalsePositive(document, tsDoc))
+            .filter(isNoFalsePositive(document))
             .map(enhanceIfNecessary)
             .map(swapDiagRangeStartEndIfNecessary);
     }
@@ -114,15 +114,13 @@ function hasNoNegativeLines(diagnostic: Diagnostic): boolean {
     return diagnostic.range.start.line >= 0 && diagnostic.range.end.line >= 0;
 }
 
-function isNoFalsePositive(document: Document, tsDoc: SvelteDocumentSnapshot) {
-    const text = document.getText();
+function isNoFalsePositive(document: Document) {
     const usesPug = document.getLanguageAttribute('template') === 'pug';
 
     return (diagnostic: Diagnostic) => {
         return (
             isNoJsxCannotHaveMultipleAttrsError(diagnostic) &&
             isNoUnusedLabelWarningForReactiveStatement(diagnostic) &&
-            isNoUsedBeforeAssigned(diagnostic, text, tsDoc) &&
             (!usesPug || isNoPugFalsePositive(diagnostic, document))
         );
     };
@@ -140,22 +138,6 @@ function isNoPugFalsePositive(diagnostic: Diagnostic, document: Document): boole
     );
 }
 
-/**
- * Variable used before being assigned, can happen when  you do `export let x`
- * without assigning a value in strict mode. Should not throw an error here
- * but on the component-user-side ("you did not set a required prop").
- */
-function isNoUsedBeforeAssigned(
-    diagnostic: Diagnostic,
-    text: string,
-    tsDoc: SvelteDocumentSnapshot
-): boolean {
-    if (diagnostic.code !== 2454) {
-        return true;
-    }
-
-    return !tsDoc.hasProp(getTextInRange(diagnostic.range, text));
-}
 
 /**
  * Unused label warning when using reactive statement (`$: a = ...`)

@@ -1,5 +1,6 @@
 import MagicString from 'magic-string';
 import ts from 'typescript';
+import { surroundWithIgnoreComments } from '../../utils/ignore';
 import { findExportKeyword, getLastLeadingDoc, isInterfaceOrTypeDeclaration } from '../utils/tsAst';
 
 export function is$$PropsDeclaration(
@@ -103,7 +104,6 @@ export class ExportedNames {
             return;
         }
 
-        const hasInitializers = node.declarations.filter((declaration) => declaration.initializer);
         const handleTypeAssertion = (declaration: ts.VariableDeclaration) => {
             const identifier = declaration.name;
             const tsType = declaration.type;
@@ -124,7 +124,7 @@ export class ExportedNames {
             const name = identifier.getText();
             const end = declaration.end + this.astOffset;
 
-            this.str.appendLeft(end, `;${name} = __sveltets_1_any(${name});`);
+            this.str.appendLeft(end, surroundWithIgnoreComments(`;${name} = __sveltets_1_any({});`));
         };
 
         const findComma = (target: ts.Node) =>
@@ -144,7 +144,7 @@ export class ExportedNames {
         };
         splitDeclaration();
 
-        for (const declaration of hasInitializers) {
+        for (const declaration of node.declarations) {
             handleTypeAssertion(declaration);
         }
         this.doneDeclarationTransformation.add(node);

@@ -16,7 +16,8 @@ import {
     isAfterSvelte2TsxPropsReturn,
     isNoTextSpanInGeneratedCode,
     SnapshotFragmentMap,
-    findContainingNode
+    findContainingNode,
+    isInGeneratedCode
 } from './utils';
 
 export class RenameProviderImpl implements RenameProvider {
@@ -335,7 +336,8 @@ export class RenameProviderImpl implements RenameProvider {
             return (
                 notPrecededBy('__sveltets_1_instanceOf(') &&
                 notPrecededBy('__sveltets_1_ensureType(') &&
-                notPrecededBy('= __sveltets_1_store_get(')
+                notPrecededBy('= __sveltets_1_store_get(') &&
+                !isInGeneratedCode(content, loc.textSpan.start, loc.textSpan.start + loc.textSpan.length)
             );
 
             function notPrecededBy(str: string) {
