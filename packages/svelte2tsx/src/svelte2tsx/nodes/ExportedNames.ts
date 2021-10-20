@@ -95,9 +95,11 @@ export class ExportedNames {
     }
 
     /**
-     * Appends `prop = __sveltets_1_any(prop)`  to given declaration in order to
-     * trick TS into widening the type. Else for example `let foo: string | undefined = undefined`
+     * Appends `prop = __sveltets_1_any({})`  to given declaration in order to:
+     * 1. trick TS into widening the type. Else for example `let foo: string | undefined = undefined`
      * is narrowed to `undefined` by TS.
+     * 2. initialized props without an initializer so it doesn't show a uninitialized variable
+     * error
      */
     private propTypeAssertToUserDefined(node: ts.VariableDeclarationList) {
         if (this.doneDeclarationTransformation.has(node)) {
