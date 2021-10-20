@@ -337,7 +337,11 @@ export class RenameProviderImpl implements RenameProvider {
                 notPrecededBy('__sveltets_1_instanceOf(') &&
                 notPrecededBy('__sveltets_1_ensureType(') &&
                 notPrecededBy('= __sveltets_1_store_get(') &&
-                !isInGeneratedCode(content, loc.textSpan.start, loc.textSpan.start + loc.textSpan.length)
+                !isInGeneratedCode(
+                    content,
+                    loc.textSpan.start,
+                    loc.textSpan.start + loc.textSpan.length
+                )
             );
 
             function notPrecededBy(str: string) {

@@ -138,7 +138,6 @@ function isNoPugFalsePositive(diagnostic: Diagnostic, document: Document): boole
     );
 }
 
-
 /**
  * Unused label warning when using reactive statement (`$: a = ...`)
  */

@@ -126,7 +126,10 @@ export class ExportedNames {
             const name = identifier.getText();
             const end = declaration.end + this.astOffset;
 
-            this.str.appendLeft(end, surroundWithIgnoreComments(`;${name} = __sveltets_1_any({});`));
+            this.str.appendLeft(
+                end,
+                surroundWithIgnoreComments(`;${name} = __sveltets_1_any({});`)
+            );
         };
 
         const findComma = (target: ts.Node) =>
