@@ -1,7 +1,7 @@
 ///<reference types="svelte" />
 <></>;function render() {
 
-	 let foo: number = undefined;foo = __sveltets_1_any(foo);
+	 let foo: number = undefined/*Ωignore_startΩ*/;foo = __sveltets_1_any({});/*Ωignore_endΩ*/
 	 const bar: string = ''
 ;
 () => (<><svelteoptions accessors={false} />

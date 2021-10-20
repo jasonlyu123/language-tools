@@ -4,7 +4,7 @@
     /**
      * DOCS!
      */
-     let a: string;
+     let a: string/*Ωignore_startΩ*/;a = __sveltets_1_any({});/*Ωignore_endΩ*/;
     /**
      * MORE DOCS!
      */
