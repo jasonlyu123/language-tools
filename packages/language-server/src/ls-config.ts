@@ -2,7 +2,10 @@ import { merge, get } from 'lodash';
 import { UserPreferences } from 'typescript';
 import { LanguageSettings as CSSLanguageSettings } from 'vscode-css-languageservice';
 import { VSCodeEmmetConfig } from 'vscode-emmet-helper';
-import { CompletionConfiguration as HTMLCompletionConfiguration, HoverSettings as HTMLHoverSettings } from 'vscode-html-languageservice';
+import {
+    CompletionConfiguration as HTMLCompletionConfiguration,
+    HoverSettings as HTMLHoverSettings
+} from 'vscode-html-languageservice';
 import { getLanguageService as getCSSLanguageService } from './plugins/css/service';
 
 /**
@@ -245,8 +248,8 @@ type DeepPartial<T> = T extends CompilerWarningsSettings
       };
 
 export interface HTMLLanguageServiceConfig {
-    hover?: HTMLHoverSettings,
-    completion?: HTMLCompletionConfiguration
+    hover?: HTMLHoverSettings;
+    completion?: HTMLCompletionConfiguration;
 }
 
 export class LSConfigManager {
@@ -375,7 +378,7 @@ export class LSConfigManager {
     }
 
     updateCssLanguageServiceConfig(config: Record<string, CSSLanguageSettings>) {
-        (['css' , 'less' , 'scss'] as const).forEach(lang => {
+        (['css', 'less', 'scss'] as const).forEach((lang) => {
             getCSSLanguageService(lang).configure(config[lang]);
         });
     }
