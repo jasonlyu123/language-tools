@@ -2,6 +2,7 @@ import { merge, get } from 'lodash';
 import { UserPreferences } from 'typescript';
 import { LanguageSettings as CSSLanguageSettings } from 'vscode-css-languageservice';
 import { VSCodeEmmetConfig } from 'vscode-emmet-helper';
+import { CompletionConfiguration as HTMLCompletionConfiguration, HoverSettings as HTMLHoverSettings } from 'vscode-html-languageservice';
 import { getLanguageService as getCSSLanguageService } from './plugins/css/service';
 
 /**
@@ -243,6 +244,11 @@ type DeepPartial<T> = T extends CompilerWarningsSettings
           [P in keyof T]?: DeepPartial<T[P]>;
       };
 
+export interface HTMLLanguageServiceConfig {
+    hover?: HTMLHoverSettings,
+    completion?: HTMLCompletionConfiguration
+}
+
 export class LSConfigManager {
     private config: LSConfig = defaultLSConfig;
     private listeners: Array<(config: LSConfigManager) => void> = [];
@@ -263,6 +269,7 @@ export class LSConfigManager {
     private prettierConfig: any = {};
     private emmetConfig: VSCodeEmmetConfig = {};
     private isTrusted = true;
+    readonly htmlConfig: HTMLLanguageServiceConfig = {};
 
     /**
      * Updates config.
@@ -371,6 +378,14 @@ export class LSConfigManager {
         (['css' , 'less' , 'scss'] as const).forEach(lang => {
             getCSSLanguageService(lang).configure(config[lang]);
         });
+    }
+
+    updateHtmlLanguageServiceConfig(config: any) {
+        this.htmlConfig.hover = config?.hover;
+        this.htmlConfig.completion = {
+            hideAutoCompleteProposals: config?.autoClosingTags === true,
+            attributeDefaultValue: config?.completion.attributeDefaultValue
+        };
     }
 }
 

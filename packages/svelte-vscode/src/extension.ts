@@ -96,7 +96,8 @@ export function activate(context: ExtensionContext) {
                 'prettier',
                 'css',
                 'less',
-                'scss'
+                'scss',
+                'html'
             ],
             fileEvents: workspace.createFileSystemWatcher('{**/*.js,**/*.ts}', false, false, false)
         },
@@ -109,7 +110,8 @@ export function activate(context: ExtensionContext) {
                 javascript: workspace.getConfiguration('javascript'),
                 css: workspace.getConfiguration('css'),
                 less: workspace.getConfiguration('less'),
-                scss: workspace.getConfiguration('scss')
+                scss: workspace.getConfiguration('scss'),
+                html: workspace.getConfiguration('html')
             },
             dontFilterIncompleteCompletions: true, // VSCode filters client side and is smarter at it than us
             isTrusted: (workspace as any).isTrusted
