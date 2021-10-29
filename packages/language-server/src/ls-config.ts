@@ -1,6 +1,8 @@
 import { merge, get } from 'lodash';
 import { UserPreferences } from 'typescript';
+import { LanguageSettings as CSSLanguageSettings } from 'vscode-css-languageservice';
 import { VSCodeEmmetConfig } from 'vscode-emmet-helper';
+import { getLanguageService as getCSSLanguageService } from './plugins/css/service';
 
 /**
  * Default config for the language server.
@@ -363,6 +365,12 @@ export class LSConfigManager {
 
     getTsUserPreferences(lang: TsUserConfigLang) {
         return this.tsUserPreferences[lang];
+    }
+
+    updateCssLanguageServiceConfig(config: Record<string, CSSLanguageSettings>) {
+        (['css' , 'less' , 'scss'] as const).forEach(lang => {
+            getCSSLanguageService(lang).configure(config[lang]);
+        });
     }
 }
 

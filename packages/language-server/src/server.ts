@@ -133,6 +133,7 @@ export function startServer(options?: LSOptions) {
                 evt.initializationOptions?.prettierConfig ||
                 {}
         );
+        configManager.updateCssLanguageServiceConfig(evt.initializationOptions?.configuration);
 
         pluginHost.initialize({
             filterIncompleteCompletions:
@@ -270,6 +271,7 @@ export function startServer(options?: LSOptions) {
         configManager.updateTsJsUserPreferences(settings);
         configManager.updateEmmetConfig(settings.emmet);
         configManager.updatePrettierConfig(settings.prettier);
+        configManager.updateCssLanguageServiceConfig(settings);
     });
 
     connection.onDidOpenTextDocument((evt) => {
