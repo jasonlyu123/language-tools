@@ -37,6 +37,7 @@ import { debounceThrottle, isNotNullOrUndefined, normalizeUri, urlToPath } from 
 import { FallbackWatcher } from './lib/FallbackWatcher';
 import { configLoader } from './lib/documents/configLoader';
 import { setIsTrusted } from './importPackage';
+import ts from 'typescript';
 
 namespace TagCloseRequest {
     export const type: RequestType<TextDocumentPositionParams, string | null, any> =
@@ -110,6 +111,12 @@ export function startServer(options?: LSOptions) {
         configManager.updateIsTrusted(isTrusted);
         if (!isTrusted) {
             Logger.log('Workspace is not trusted, running with reduced capabilities.');
+        }
+
+        if (evt.initializationOptions?.locale) {
+            const errors: any[] = [];
+            ts.validateLocaleAndSetLanguage(evt.initializationOptions.locale, ts.sys, errors);
+            console.log(errors);
         }
 
         // Backwards-compatible way of setting initialization options (first `||` is the old style)

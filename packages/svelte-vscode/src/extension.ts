@@ -13,7 +13,8 @@ import {
     ViewColumn,
     window,
     workspace,
-    WorkspaceEdit
+    WorkspaceEdit,
+    env
 } from 'vscode';
 import {
     ExecuteCommandRequest,
@@ -114,7 +115,8 @@ export function activate(context: ExtensionContext) {
                 scss: workspace.getConfiguration('scss')
             },
             dontFilterIncompleteCompletions: true, // VSCode filters client side and is smarter at it than us
-            isTrusted: (workspace as any).isTrusted
+            isTrusted: (workspace as any).isTrusted,
+            locale: env.language
         }
     };
 
