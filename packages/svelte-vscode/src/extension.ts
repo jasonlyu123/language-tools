@@ -9,6 +9,7 @@ import {
     ProgressLocation,
     Range,
     TextDocument,
+    TextEditor,
     Uri,
     ViewColumn,
     window,
@@ -358,23 +359,33 @@ function addCompilePreviewCommand(getLS: () => LanguageClient, context: Extensio
 
     context.subscriptions.push(
         commands.registerTextEditorCommand('svelte.showCompiledCodeToSide', async (editor) => {
-            if (editor?.document?.languageId !== 'svelte') {
-                return;
-            }
-
-            const uri = editor.document.uri;
-            const svelteUri = CompiledCodeContentProvider.toSvelteSchemeUri(uri);
-            window.withProgress(
-                { location: ProgressLocation.Window, title: 'Compiling..' },
-                async () => {
-                    return await window.showTextDocument(svelteUri, {
-                        preview: true,
-                        viewColumn: ViewColumn.Beside
-                    });
-                }
-            );
+            showCompiledCode(editor);
+        }),
+        commands.registerTextEditorCommand('svelte.showCompiledCodeToSide.css', async (editor) => {
+            showCompiledCode(editor, 'css');
+        }),
+        commands.registerTextEditorCommand('svelte.showCompiledCodeToSide.ast', async (editor) => {
+            showCompiledCode(editor, 'ast');
         })
     );
+
+    function showCompiledCode(editor: TextEditor, type?: string) {
+        if (editor?.document?.languageId !== 'svelte') {
+            return;
+        }
+
+        const uri = editor.document.uri;
+        const svelteUri = CompiledCodeContentProvider.toSvelteSchemeUri(uri, false, type);
+        window.withProgress(
+            { location: ProgressLocation.Window, title: 'Compiling..' },
+            async () => {
+                return await window.showTextDocument(svelteUri, {
+                    preview: true,
+                    viewColumn: ViewColumn.Beside
+                });
+            }
+        );
+    }
 }
 
 function addExtracComponentCommand(getLS: () => LanguageClient, context: ExtensionContext) {

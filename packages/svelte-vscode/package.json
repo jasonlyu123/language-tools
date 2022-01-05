@@ -518,6 +518,14 @@
                 }
             },
             {
+              "command": "svelte.showCompiledCodeToSide.css",
+              "title": "Svelte: Show Compiled CSS Code"
+            },
+            {
+              "command": "svelte.showCompiledCodeToSide.ast",
+              "title": "Svelte: Show Compiled AST"
+            },
+            {
                 "command": "svelte.extractComponent",
                 "title": "Svelte: Extract Component"
             }
@@ -527,6 +535,10 @@
                 {
                     "command": "svelte.showCompiledCodeToSide",
                     "when": "editorLangId == svelte"
+                },
+                {
+                  "command": "svelte.showCompiledCodeToSide.css",
+                  "when": "editorLangId == svelte"
                 }
             ],
             "editor/title": [

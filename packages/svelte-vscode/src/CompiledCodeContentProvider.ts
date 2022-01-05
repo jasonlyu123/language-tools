@@ -1,4 +1,5 @@
 import { LanguageClient } from 'vscode-languageclient/node';
+import { URLSearchParams } from 'url';
 import {
     Uri,
     TextDocumentContentProvider,
@@ -13,20 +14,25 @@ import { debounce } from 'lodash';
 type CompiledCodeResp = {
     js: { code: string; map: any };
     css: { code: string; map: any };
+    ast: any
 };
 
 const SVELTE_URI_SCHEME = 'svelte-compiled';
 
 function toSvelteSchemeUri<B extends boolean = false>(
     srcUri: string | Uri,
-    asString?: B
+    asString?: B,
+    type = 'js'
 ): B extends true ? string : Uri {
     srcUri = typeof srcUri == 'string' ? Uri.parse(srcUri) : srcUri;
     const src = btoa(srcUri.toString());
+    const ext =  type === 'js' || type === 'css' ? '.' + type : '.json';
+
     const destUri = srcUri.with({
         scheme: SVELTE_URI_SCHEME,
         fragment: src,
-        path: srcUri.path + '.js'
+        path: srcUri.path + ext,
+        query: `?type=${type}`
     });
     return (asString ? destUri.toString() : destUri) as any;
 }
@@ -65,6 +71,8 @@ export default class CompiledCodeContentProvider implements TextDocumentContentP
                     const srcUri = changeEvent.document.uri.toString();
                     if (this.watchedSourceUri.has(srcUri)) {
                         this.didChangeEmitter.fire(toSvelteSchemeUri(srcUri));
+                        this.didChangeEmitter.fire(toSvelteSchemeUri(srcUri, false, 'css'));
+                        this.didChangeEmitter.fire(toSvelteSchemeUri(srcUri, false, 'ast'));
                     }
                 }, 500)
             )
@@ -89,6 +97,19 @@ export default class CompiledCodeContentProvider implements TextDocumentContentP
             srcUriStr
         );
         if (resp?.js?.code) {
+            if (uri.query) {
+                const params = new URLSearchParams(uri.query);
+                const type = params.get('type');
+
+                if (type === 'css' || type === 'js') {
+                    return resp[type].code ?? '';
+                }
+
+                if (type === 'ast') {
+                    return JSON.stringify(resp[type], null, 4);
+                }
+            }
+
             return resp.js.code;
         } else {
             window.setStatusBarMessage(`Svelte: fail to compile ${uri.path}`, 3000);

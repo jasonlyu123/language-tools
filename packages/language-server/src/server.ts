@@ -422,7 +422,8 @@ export function startServer(options?: LSOptions) {
             if (compiled) {
                 const js = compiled.js;
                 const css = compiled.css;
-                return { js, css };
+                const ast = compiled.ast;
+                return { js, css, ast };
             } else {
                 return null;
             }
