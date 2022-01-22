@@ -88,6 +88,7 @@ function preprocess(text: string) {
 }
 
 export interface AttributeContext {
+    start: number
     name: string;
     inValue: boolean;
     elementTag: Node;
@@ -114,25 +115,29 @@ export function getAttributeContextAtPosition(
 
     let token = scanner.scan();
     let currentAttributeName: string | undefined;
+    let currentAttributeStart: number | undefined;
     const inTokenRange = () =>
         scanner.getTokenOffset() <= offset && offset <= scanner.getTokenEnd();
     while (token != TokenType.EOS) {
         // adopted from https://github.com/microsoft/vscode-html-languageservice/blob/2f7ae4df298ac2c299a40e9024d118f4a9dc0c68/src/services/htmlCompletion.ts#L402
         if (token === TokenType.AttributeName) {
             currentAttributeName = scanner.getTokenText();
+            currentAttributeStart = scanner.getTokenOffset();
 
             if (inTokenRange()) {
                 return {
+                    start: currentAttributeStart,
                     elementTag: tag,
                     name: currentAttributeName,
                     inValue: false
                 };
             }
         } else if (token === TokenType.DelimiterAssign) {
-            if (scanner.getTokenEnd() === offset && currentAttributeName) {
+            if (scanner.getTokenEnd() === offset && currentAttributeName && currentAttributeStart) {
                 const nextToken = scanner.scan();
 
                 return {
+                    start: currentAttributeStart,
                     elementTag: tag,
                     name: currentAttributeName,
                     inValue: true,
@@ -143,7 +148,7 @@ export function getAttributeContextAtPosition(
                 };
             }
         } else if (token === TokenType.AttributeValue) {
-            if (inTokenRange() && currentAttributeName) {
+            if (inTokenRange() && currentAttributeName && currentAttributeStart) {
                 let start = scanner.getTokenOffset();
                 let end = scanner.getTokenEnd();
                 const char = text[start];
@@ -154,13 +159,16 @@ export function getAttributeContextAtPosition(
                 }
 
                 return {
+                    start: currentAttributeStart,
                     elementTag: tag,
                     name: currentAttributeName,
                     inValue: true,
                     valueRange: [start, end]
                 };
             }
+
             currentAttributeName = undefined;
+            currentAttributeStart = undefined;
         }
         token = scanner.scan();
     }

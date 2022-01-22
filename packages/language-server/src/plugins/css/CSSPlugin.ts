@@ -42,18 +42,17 @@ import { getLanguage, getLanguageService } from './service';
 import { GlobalVars } from './global-vars';
 import { getIdClassCompletion } from './features/getIdClassCompletion';
 import { AttributeContext, getAttributeContextAtPosition } from '../../lib/documents/parseHtml';
-import { StyleAttributeDocument } from './StyleAttributeDocument';
+import { StyleAttributeDocument, StyleDirectiveDocument } from './StyleAttributeDocument';
 
 export class CSSPlugin
     implements
-        HoverProvider,
-        CompletionsProvider,
-        DiagnosticsProvider,
-        DocumentColorsProvider,
-        ColorPresentationsProvider,
-        DocumentSymbolsProvider,
-        SelectionRangeProvider
-{
+    HoverProvider,
+    CompletionsProvider,
+    DiagnosticsProvider,
+    DocumentColorsProvider,
+    ColorPresentationsProvider,
+    DocumentSymbolsProvider,
+    SelectionRangeProvider {
     private configManager: LSConfigManager;
     private cssDocuments = new WeakMap<Document, CSSDocument>();
     private triggerCharacters = ['.', ':', '-', '/'];
@@ -126,11 +125,16 @@ export class CSSPlugin
         }
         const attributeContext = getAttributeContextAtPosition(document, position);
         if (
-            attributeContext &&
-            this.inStyleAttributeWithoutInterpolation(attributeContext, document.getText())
+            attributeContext
         ) {
-            const [start, end] = attributeContext.valueRange;
-            return this.doHoverInternal(new StyleAttributeDocument(document, start, end), position);
+            if (this.inStyleAttributeWithoutInterpolation(attributeContext, document.getText())) {
+                const [start, end] = attributeContext.valueRange;
+                return this.doHoverInternal(new StyleAttributeDocument(document, start, end), position);
+            }
+
+            if (attributeContext.name.startsWith('style:')) {
+                return this.doHoverInternal(new StyleDirectiveDocument(document, attributeContext), position);
+            }
         }
 
         return null;
@@ -183,6 +187,31 @@ export class CSSPlugin
                 position,
                 new StyleAttributeDocument(document, start, end)
             );
+        } else if (attributeContext.name.startsWith('style:')) {
+            const completion = this.getCompletionsInternal(
+                document,
+                position,
+                new StyleDirectiveDocument(document, attributeContext)
+            );
+
+            completion?.items.forEach(item => {
+                item.label = item.label.replace(/: (.*);/, (_, r1) => `="${r1}"`);
+
+                if (!item.textEdit) {
+                    return;
+                }
+
+                let { newText } = item.textEdit;
+                newText = newText.replace(/: (.*)$/, (_, r1) => `="${r1.replace(';', '')}"`);
+
+                // if (newText.endsWith(';')) {
+                //     newText = newText.slice(0, newText.length - 2);
+                // }
+
+                item.textEdit.newText = newText;
+            });
+
+            return completion;
         } else {
             return getIdClassCompletion(cssDocument, attributeContext);
         }
