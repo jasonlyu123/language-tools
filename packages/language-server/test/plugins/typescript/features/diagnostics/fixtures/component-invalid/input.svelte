@@ -12,6 +12,11 @@
             };
         }
     > {}
+    class EventIndex extends SvelteComponentTyped<
+        {},
+        {[key: string]: CustomEvent<any>},
+        {}
+    >{}
     class DoesntWork {}
 </script>
 
@@ -21,6 +26,7 @@
 <Works2 hi="hi" on:click={e => console.log(e.movementX)} let:foo>
     {foo.toLocaleLowerCase()}
 </Works2>
+<EventIndex on:hi={e => console.log(e.detail)} />
 
 <!-- invalid -->
 <DoesntWork />
