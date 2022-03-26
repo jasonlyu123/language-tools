@@ -1,5 +1,5 @@
 import { get, merge } from 'lodash';
-import { UserPreferences } from 'typescript';
+import { UserPreferences, InlayHintsOptions } from 'typescript';
 import { VSCodeEmmetConfig } from 'vscode-emmet-helper';
 import { returnObjectIfHasKeys } from './utils';
 
@@ -220,6 +220,7 @@ export interface LSSvelteConfig {
 export interface TSUserConfig {
     preferences?: TsUserPreferencesConfig;
     suggest?: TSSuggestConfig;
+    inlayHints?: TsInalyHintsConfig;
 }
 
 /**
@@ -246,6 +247,20 @@ export interface TSSuggestConfig {
     includeCompletionsForImportStatements: boolean | undefined;
 }
 
+export interface TsInalyHintsConfig {
+    enumMemberValues: { enabled: boolean } | undefined;
+    functionLikeReturnTypes: { enabled: boolean } | undefined;
+    parameterNames:
+        | {
+              enabled: InlayHintsOptions['includeInlayParameterNameHints'];
+              suppressWhenArgumentMatchesName: boolean;
+          }
+        | undefined;
+    parameterTypes: { enabled: boolean } | undefined;
+    propertyDeclarationTypes: { enabled: boolean } | undefined;
+    variableTypes: { enabled: boolean } | undefined;
+}
+
 export type TsUserConfigLang = 'typescript' | 'javascript';
 
 /**
@@ -267,7 +282,7 @@ type DeepPartial<T> = T extends CompilerWarningsSettings
 export class LSConfigManager {
     private config: LSConfig = defaultLSConfig;
     private listeners: Array<(config: LSConfigManager) => void> = [];
-    private tsUserPreferences: Record<TsUserConfigLang, UserPreferences> = {
+    private tsUserPreferences: Record<TsUserConfigLang, InlayHintsOptions> = {
         typescript: {
             includeCompletionsForModuleExports: true,
             includeCompletionsForImportStatements: true,
@@ -399,6 +414,8 @@ export class LSConfigManager {
     }
 
     private _updateTsUserPreferences(lang: TsUserConfigLang, config: TSUserConfig) {
+        const { inlayHints } = config;
+
         this.tsUserPreferences[lang] = {
             ...this.tsUserPreferences[lang],
             importModuleSpecifierPreference: config.preferences?.importModuleSpecifier,
@@ -410,7 +427,14 @@ export class LSConfigManager {
                 config.suggest?.includeCompletionsForImportStatements ?? true,
             includeAutomaticOptionalChainCompletions:
                 config.suggest?.includeAutomaticOptionalChainCompletions ?? true,
-            includeCompletionsWithInsertText: true
+            includeCompletionsWithInsertText: true,
+            includeInlayEnumMemberValueHints: inlayHints?.enumMemberValues?.enabled,
+            includeInlayFunctionLikeReturnTypeHints: inlayHints?.functionLikeReturnTypes?.enabled,
+            includeInlayParameterNameHints: inlayHints?.parameterNames?.enabled,
+            includeInlayParameterNameHintsWhenArgumentMatchesName:
+                inlayHints?.parameterNames?.suppressWhenArgumentMatchesName,
+            includeInlayFunctionParameterTypeHints: inlayHints?.parameterTypes?.enabled,
+            includeInlayVariableTypeHints: inlayHints?.variableTypes?.enabled
         };
     }
 

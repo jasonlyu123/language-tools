@@ -261,6 +261,15 @@ export const isReactiveStatement = nodeAndParentsSatisfyRespectivePredicates<ts.
     )
 );
 
+export function findRenderFunction(sourceFile: ts.SourceFile) {
+    // only search top level
+    for (const child of sourceFile.statements) {
+        if (isRenderFunction(child)) {
+            return child;
+        }
+    }
+}
+
 export const isInReactiveStatement = (node: ts.Node) => isSomeAncestor(node, isReactiveStatement);
 
 function gatherDescendants<T extends ts.Node>(
@@ -279,3 +288,17 @@ function gatherDescendants<T extends ts.Node>(
 }
 
 export const gatherIdentifiers = (node: ts.Node) => gatherDescendants(node, ts.isIdentifier);
+
+export function findChildOfKind(node: ts.Node, kind: ts.SyntaxKind): ts.Node | undefined {
+    for (const child of node.getChildren()) {
+        if (child.kind === kind) {
+            return child;
+        }
+
+        const foundInChildren = findChildOfKind(child, kind);
+
+        if (foundInChildren) {
+            return foundInChildren;
+        }
+    }
+}

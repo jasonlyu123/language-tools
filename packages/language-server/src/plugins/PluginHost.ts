@@ -499,7 +499,9 @@ export class PluginHost implements LSProvider, OnWatchFileChanges {
         );
     }
 
-    getInlayHints(document: TextDocumentIdentifier, range: Range): Promise<InlayHint[] | null> {
+    getInlayHints(textDocument: TextDocumentIdentifier, range: Range): Promise<InlayHint[] | null> {
+        const document = this.getDocument(textDocument.uri);
+
         return this.execute<InlayHint[] | null>(
             'getInlayHints',
             [document, range],

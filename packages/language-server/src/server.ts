@@ -249,7 +249,8 @@ export function startServer(options?: LSOptions) {
                 },
                 linkedEditingRangeProvider: true,
                 implementationProvider: true,
-                typeDefinitionProvider: true
+                typeDefinitionProvider: true,
+                inlayHintProvider: true
             }
         };
     });
