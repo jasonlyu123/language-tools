@@ -5,9 +5,9 @@ import {
     CompletionItem,
     TextEdit,
     Range,
-    CompletionList,
     CompletionContext
 } from 'vscode-languageserver';
+import { AppCompletionList } from '../../interfaces';
 
 /**
  * from https://github.com/microsoft/vscode/blob/157255fa4b0775c5ab8729565faf95927b610cac/extensions/typescript-language-features/src/languageFeatures/directiveCommentCompletions.ts#L19
@@ -40,7 +40,7 @@ export function getDirectiveCommentCompletions(
     position: Position,
     document: Document,
     completionContext: CompletionContext | undefined
-) {
+): AppCompletionList | null {
     // don't trigger until // @
     if (completionContext?.triggerCharacter === '/') {
         return null;
@@ -73,5 +73,5 @@ export function getDirectiveCommentCompletions(
         )
     }));
 
-    return CompletionList.create(items, false);
+    return { items, isIncomplete: false };
 }

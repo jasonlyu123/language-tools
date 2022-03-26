@@ -4,7 +4,6 @@ import {
     CodeAction,
     CodeActionContext,
     CompletionContext,
-    CompletionList,
     DefinitionLink,
     Diagnostic,
     FileChangeType,
@@ -50,7 +49,7 @@ import {
 } from '../interfaces';
 import { CodeActionsProviderImpl } from './features/CodeActionsProvider';
 import {
-    CompletionEntryWithIdentifer,
+    CompletionEntryWithIdentifier,
     CompletionsProviderImpl
 } from './features/CompletionProvider';
 import { DiagnosticsProviderImpl } from './features/DiagnosticsProvider';
@@ -91,7 +90,7 @@ export class TypeScriptPlugin
         ImplementationProvider,
         TypeDefinitionProvider,
         OnWatchFileChanges,
-        CompletionsProvider<CompletionEntryWithIdentifer>,
+        CompletionsProvider<CompletionEntryWithIdentifier>,
         UpdateTsOrJsFile
 {
     __name = 'ts';
@@ -273,7 +272,7 @@ export class TypeScriptPlugin
         position: Position,
         completionContext?: CompletionContext,
         cancellationToken?: CancellationToken
-    ): Promise<AppCompletionList<CompletionEntryWithIdentifer> | null> {
+    ): Promise<AppCompletionList<CompletionEntryWithIdentifier> | null> {
         if (!this.featureEnabled('completions')) {
             return null;
         }
@@ -292,10 +291,10 @@ export class TypeScriptPlugin
         );
 
         if (completions && tsDirectiveCommentCompletions) {
-            return CompletionList.create(
-                completions.items.concat(tsDirectiveCommentCompletions.items),
-                completions.isIncomplete
-            );
+            return {
+                items: completions.items.concat(tsDirectiveCommentCompletions.items),
+                isIncomplete: completions.isIncomplete
+            };
         }
 
         return completions ?? tsDirectiveCommentCompletions;
@@ -303,9 +302,9 @@ export class TypeScriptPlugin
 
     async resolveCompletion(
         document: Document,
-        completionItem: AppCompletionItem<CompletionEntryWithIdentifer>,
+        completionItem: AppCompletionItem<CompletionEntryWithIdentifier>,
         cancellationToken?: CancellationToken
-    ): Promise<AppCompletionItem<CompletionEntryWithIdentifer>> {
+    ): Promise<AppCompletionItem<CompletionEntryWithIdentifier>> {
         return this.completionProvider.resolveCompletion(
             document,
             completionItem,

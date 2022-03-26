@@ -15,7 +15,8 @@ import {
     SemanticTokensRequest,
     SemanticTokensRangeRequest,
     DidChangeWatchedFilesParams,
-    LinkedEditingRangeRequest
+    LinkedEditingRangeRequest,
+    InlayHintRequest
 } from 'vscode-languageserver';
 import { IPCMessageReader, IPCMessageWriter, createConnection } from 'vscode-languageserver/node';
 import { DiagnosticsManager } from './lib/DiagnosticsManager';
@@ -104,7 +105,8 @@ export function startServer(options?: LSOptions) {
             watcher.onDidChangeWatchedFiles(onDidChangeWatchedFiles);
         }
 
-        const isTrusted: boolean = evt.initializationOptions?.isTrusted ?? true;
+        const initializationOptions = evt.initializationOptions as any;
+        const isTrusted: boolean = initializationOptions?.isTrusted ?? true;
         configLoader.setDisabled(!isTrusted);
         setIsTrusted(isTrusted);
         configManager.updateIsTrusted(isTrusted);
@@ -114,33 +116,33 @@ export function startServer(options?: LSOptions) {
 
         // Backwards-compatible way of setting initialization options (first `||` is the old style)
         configManager.update(
-            evt.initializationOptions?.configuration?.svelte?.plugin ||
-                evt.initializationOptions?.config ||
-                {}
+            initializationOptions?.configuration?.svelte?.plugin ||
+            initializationOptions?.config ||
+            {}
         );
         configManager.updateTsJsUserPreferences(
-            evt.initializationOptions?.configuration ||
-                evt.initializationOptions?.typescriptConfig ||
-                {}
+            initializationOptions?.configuration ||
+            initializationOptions?.typescriptConfig ||
+            {}
         );
         configManager.updateEmmetConfig(
-            evt.initializationOptions?.configuration?.emmet ||
-                evt.initializationOptions?.emmetConfig ||
-                {}
+            initializationOptions?.configuration?.emmet ||
+            initializationOptions?.emmetConfig ||
+            {}
         );
         configManager.updatePrettierConfig(
-            evt.initializationOptions?.configuration?.prettier ||
-                evt.initializationOptions?.prettierConfig ||
-                {}
+            initializationOptions?.configuration?.prettier ||
+            initializationOptions?.prettierConfig ||
+            {}
         );
         // no old style as these were added later
-        configManager.updateCssConfig(evt.initializationOptions?.configuration?.css);
-        configManager.updateScssConfig(evt.initializationOptions?.configuration?.scss);
-        configManager.updateLessConfig(evt.initializationOptions?.configuration?.less);
+        configManager.updateCssConfig(initializationOptions?.configuration?.css);
+        configManager.updateScssConfig(initializationOptions?.configuration?.scss);
+        configManager.updateLessConfig(initializationOptions?.configuration?.less);
 
         pluginHost.initialize({
             filterIncompleteCompletions:
-                !evt.initializationOptions?.dontFilterIncompleteCompletions,
+                !initializationOptions?.dontFilterIncompleteCompletions,
             definitionLinkSupport: !!evt.capabilities.textDocument?.definition?.linkSupport
         });
         pluginHost.register((sveltePlugin = new SveltePlugin(configManager)));
@@ -208,28 +210,28 @@ export function startServer(options?: LSOptions) {
                 codeActionProvider: evt.capabilities.textDocument?.codeAction
                     ?.codeActionLiteralSupport
                     ? {
-                          codeActionKinds: [
-                              CodeActionKind.QuickFix,
-                              CodeActionKind.SourceOrganizeImports,
-                              ...(clientSupportApplyEditCommand ? [CodeActionKind.Refactor] : [])
-                          ]
-                      }
+                        codeActionKinds: [
+                            CodeActionKind.QuickFix,
+                            CodeActionKind.SourceOrganizeImports,
+                            ...(clientSupportApplyEditCommand ? [CodeActionKind.Refactor] : [])
+                        ]
+                    }
                     : true,
                 executeCommandProvider: clientSupportApplyEditCommand
                     ? {
-                          commands: [
-                              'function_scope_0',
-                              'function_scope_1',
-                              'function_scope_2',
-                              'function_scope_3',
-                              'constant_scope_0',
-                              'constant_scope_1',
-                              'constant_scope_2',
-                              'constant_scope_3',
-                              'extract_to_svelte_component',
-                              'Infer function return type'
-                          ]
-                      }
+                        commands: [
+                            'function_scope_0',
+                            'function_scope_1',
+                            'function_scope_2',
+                            'function_scope_3',
+                            'constant_scope_0',
+                            'constant_scope_1',
+                            'constant_scope_2',
+                            'constant_scope_3',
+                            'extract_to_svelte_component',
+                            'Infer function return type'
+                        ]
+                    }
                     : undefined,
                 renameProvider: evt.capabilities.textDocument?.rename?.prepareSupport
                     ? { prepareProvider: true }
@@ -272,13 +274,15 @@ export function startServer(options?: LSOptions) {
     connection.onPrepareRename((req) => pluginHost.prepareRename(req.textDocument, req.position));
 
     connection.onDidChangeConfiguration(({ settings }) => {
-        configManager.update(settings.svelte?.plugin);
-        configManager.updateTsJsUserPreferences(settings);
-        configManager.updateEmmetConfig(settings.emmet);
-        configManager.updatePrettierConfig(settings.prettier);
-        configManager.updateCssConfig(settings.css);
-        configManager.updateScssConfig(settings.scss);
-        configManager.updateLessConfig(settings.less);
+        const settingsAny = (settings ?? {}) as any;
+
+        configManager.update(settingsAny?.svelte?.plugin);
+        configManager.updateTsJsUserPreferences(settingsAny);
+        configManager.updateEmmetConfig(settingsAny.emmet);
+        configManager.updatePrettierConfig(settingsAny.prettier);
+        configManager.updateCssConfig(settingsAny.css);
+        configManager.updateScssConfig(settingsAny.scss);
+        configManager.updateLessConfig(settingsAny.less);
     });
 
     connection.onDidOpenTextDocument((evt) => {
@@ -317,8 +321,12 @@ export function startServer(options?: LSOptions) {
         pluginHost.getCodeActions(evt.textDocument, evt.range, evt.context, cancellationToken)
     );
     connection.onExecuteCommand(async (evt) => {
+        if (typeof evt.arguments?.[0] != 'string') {
+            throw new Error('expect uri to be string');
+        }
+
         const result = await pluginHost.executeCommand(
-            { uri: evt.arguments?.[0] },
+            { uri: evt.arguments[0] },
             evt.command,
             evt.arguments
         );
@@ -401,6 +409,9 @@ export function startServer(options?: LSOptions) {
         LinkedEditingRangeRequest.type,
         async (evt) => await pluginHost.getLinkedEditingRanges(evt.textDocument, evt.position)
     );
+
+    connection.onRequest(InlayHintRequest.type, async (evt) =>
+        await pluginHost.getInlayHints(evt.textDocument, evt.range));
 
     docManager.on(
         'documentChange',

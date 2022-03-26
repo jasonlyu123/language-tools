@@ -2,6 +2,7 @@ import {
     CancellationToken,
     CompletionContext,
     FileChangeType,
+    InlayHint,
     LinkedEditingRanges,
     SemanticTokens,
     SignatureHelpContext,
@@ -35,7 +36,7 @@ import { Document } from '../lib/documents';
 export type Resolvable<T> = T | Promise<T>;
 
 export interface AppCompletionItem<T extends TextDocumentIdentifier = any> extends CompletionItem {
-    data?: T;
+    data?: T | undefined | null;
 }
 
 export interface AppCompletionList<T extends TextDocumentIdentifier = any> extends CompletionList {
@@ -175,6 +176,10 @@ export interface TypeDefinitionProvider {
     getTypeDefinition(document: Document, position: Position): Resolvable<Location[] | null>;
 }
 
+export interface InlayHintProvider {
+    getInlayHints(document: Document, range: Range): Resolvable<InlayHint[] | null>
+}
+
 export interface OnWatchFileChangesPara {
     fileName: string;
     changeType: FileChangeType;
@@ -204,7 +209,8 @@ type ProviderBase = DiagnosticsProvider &
     SemanticTokensProvider &
     LinkedEditingRangesProvider &
     ImplementationProvider &
-    TypeDefinitionProvider;
+    TypeDefinitionProvider &
+    InlayHintProvider;
 
 export type LSProvider = ProviderBase & BackwardsCompatibleDefinitionsProvider;
 

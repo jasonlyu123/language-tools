@@ -10,6 +10,7 @@ import {
     TextEdit,
     WorkspaceEdit
 } from 'vscode-languageserver';
+import { Command } from 'vscode-languageserver-types';
 import { importPrettier } from '../../../importPackage';
 import {
     Document,
@@ -452,7 +453,7 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
             applicableRefactors.map((applicableRefactor) => {
                 if (applicableRefactor.inlineable === false) {
                     return [
-                        CodeAction.create(applicableRefactor.description, {
+                        CodeAction.create(applicableRefactor.description, <Command>{
                             title: applicableRefactor.description,
                             command: applicableRefactor.name,
                             arguments: [
@@ -469,7 +470,7 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
                 }
 
                 return applicableRefactor.actions.map((action) => {
-                    return CodeAction.create(action.description, {
+                    return CodeAction.create(action.description, <Command>{
                         title: action.description,
                         command: action.name,
                         arguments: [

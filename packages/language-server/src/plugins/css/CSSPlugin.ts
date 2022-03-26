@@ -110,7 +110,7 @@ export class CSSPlugin
         return getLanguageService(kind)
             .doValidation(cssDocument, cssDocument.stylesheet)
             .map((diagnostic) => ({ ...diagnostic, source: getLanguage(kind) }))
-            .map((diagnostic) => mapObjWithRangeToOriginal(cssDocument, diagnostic));
+            .map((diagnostic) => mapObjWithRangeToOriginal(cssDocument, diagnostic)) as any;
     }
 
     doHover(document: Document, position: Position): Hover | null {

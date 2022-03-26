@@ -17,7 +17,7 @@ import {
 } from 'vscode-languageserver';
 import {
     CompletionsProviderImpl,
-    CompletionEntryWithIdentifer
+    CompletionEntryWithIdentifier
 } from '../../../../src/plugins/typescript/features/CompletionProvider';
 import { LSAndTSDocResolver } from '../../../../src/plugins/typescript/LSAndTSDocResolver';
 import { sortBy } from 'lodash';
@@ -476,7 +476,7 @@ function test(useNewTransformation: boolean) {
                 source: undefined,
                 sourceDisplay: undefined,
                 uri: fileNameToAbsoluteUri(filename)
-            } as CompletionEntryWithIdentifer);
+            } as CompletionEntryWithIdentifier);
         });
 
         it('resolve completion and provide documentation', async () => {

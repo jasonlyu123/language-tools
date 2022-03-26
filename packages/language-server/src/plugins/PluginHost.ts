@@ -13,6 +13,7 @@ import {
     Diagnostic,
     FormattingOptions,
     Hover,
+    InlayHint,
     LinkedEditingRanges,
     Location,
     Position,
@@ -493,6 +494,15 @@ export class PluginHost implements LSProvider, OnWatchFileChanges {
         return this.execute<Location[] | null>(
             'getTypeDefinition',
             [document, position],
+            ExecuteMode.FirstNonNull,
+            'high'
+        );
+    }
+
+    getInlayHints(document: TextDocumentIdentifier, range: Range): Promise<InlayHint[] | null> {
+        return this.execute<InlayHint[] | null>(
+            'getInlayHints',
+            [document, range],
             ExecuteMode.FirstNonNull,
             'high'
         );

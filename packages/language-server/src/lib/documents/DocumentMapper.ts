@@ -244,10 +244,10 @@ export function mapRangeToGenerated(fragment: DocumentMapper, range: Range): Ran
     );
 }
 
-export function mapCompletionItemToOriginal(
+export function mapCompletionItemToOriginal<T extends Omit<CompletionItem, 'data'>>(
     fragment: Pick<DocumentMapper, 'getOriginalPosition'>,
-    item: CompletionItem
-): CompletionItem {
+    item: T
+): T {
     if (!item.textEdit) {
         return item;
     }

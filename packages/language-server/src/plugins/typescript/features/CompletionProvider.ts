@@ -3,7 +3,6 @@ import {
     CancellationToken,
     CompletionContext,
     CompletionItem,
-    CompletionList,
     CompletionTriggerKind,
     MarkupContent,
     MarkupKind,
@@ -39,7 +38,7 @@ import {
 import { getJsDocTemplateCompletion } from './getJsDocTemplateCompletion';
 import { getComponentAtPosition, isPartOfImportStatement } from './utils';
 
-export interface CompletionEntryWithIdentifer extends ts.CompletionEntry, TextDocumentIdentifier {
+export interface CompletionEntryWithIdentifier extends ts.CompletionEntry, TextDocumentIdentifier {
     position: Position;
 }
 
@@ -48,14 +47,14 @@ type validTriggerCharacter = '.' | '"' | "'" | '`' | '/' | '@' | '<' | '#';
 type LastCompletion = {
     key: string;
     position: Position;
-    completionList: AppCompletionList<CompletionEntryWithIdentifer> | null;
+    completionList: AppCompletionList<CompletionEntryWithIdentifier> | null;
 };
 
-export class CompletionsProviderImpl implements CompletionsProvider<CompletionEntryWithIdentifer> {
+export class CompletionsProviderImpl implements CompletionsProvider<CompletionEntryWithIdentifier> {
     constructor(
         private readonly lsAndTsDocResolver: LSAndTSDocResolver,
         private readonly configManager: LSConfigManager
-    ) {}
+    ) { }
 
     /**
      * The language service throws an error if the character is not a valid trigger character.
@@ -79,7 +78,7 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionEn
         position: Position,
         completionContext?: CompletionContext,
         cancellationToken?: CancellationToken
-    ): Promise<AppCompletionList<CompletionEntryWithIdentifer> | null> {
+    ): Promise<AppCompletionList<CompletionEntryWithIdentifier> | null> {
         if (isInTag(position, document.styleInfo)) {
             return null;
         }
@@ -172,7 +171,10 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionEn
         );
 
         if (isEventOrSlotLetTriggerCharacter) {
-            return CompletionList.create(eventAndSlotLetCompletions, !!tsDoc.parserError);
+            return {
+                items: eventAndSlotLetCompletions,
+                isIncomplete: !!tsDoc.parserError
+            };
         }
 
         if (cancellationToken?.isCancellationRequested) {
@@ -186,7 +188,10 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionEn
             })?.entries || [];
 
         if (completions.length === 0 && eventAndSlotLetCompletions.length === 0) {
-            return tsDoc.parserError ? CompletionList.create([], true) : null;
+            return tsDoc.parserError ? {
+                items: [],
+                isIncomplete: true
+            } : null;
         }
 
         const existingImports = this.getExistingImports(document);
@@ -207,7 +212,10 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionEn
             .map((comp) => this.fixTextEditRange(wordRangeStartPosition, comp))
             .concat(eventAndSlotLetCompletions);
 
-        const completionList = CompletionList.create(completionItems, !!tsDoc.parserError);
+        const completionList = {
+            items: completionItems,
+            isIncomplete: !!tsDoc.parserError
+        };
         this.lastCompletion = { key: document.getFilePath() || '', position, completionList };
 
         return completionList;
@@ -251,7 +259,7 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionEn
         tsDoc: SvelteDocumentSnapshot,
         originalPosition: Position,
         wordRange: { start: number; end: number }
-    ): Promise<Array<AppCompletionItem<CompletionEntryWithIdentifer>>> {
+    ): Promise<Array<AppCompletionItem<CompletionEntryWithIdentifier>>> {
         const componentInfo = await getComponentAtPosition(lang, doc, tsDoc, originalPosition);
         if (!componentInfo) {
             return [];
@@ -285,7 +293,7 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionEn
         uri: string,
         position: Position,
         existingImports: Set<string>
-    ): AppCompletionItem<CompletionEntryWithIdentifer> | null {
+    ): AppCompletionItem<CompletionEntryWithIdentifier> | null {
         const completionLabelAndInsert = this.getCompletionLabelAndInsert(fragment, comp);
         if (!completionLabelAndInsert) {
             return null;
@@ -375,7 +383,7 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionEn
      * vscode would refuse to show the completions
      * split those edits into additionalTextEdit to fix it
      */
-    private fixTextEditRange(wordRangePosition: Position, completionItem: CompletionItem) {
+    private fixTextEditRange<T extends Omit<CompletionItem, 'data'>>(wordRangePosition: Position, completionItem: T): T {
         const { textEdit } = completionItem;
         if (!textEdit || !TextEdit.is(textEdit)) {
             return completionItem;
@@ -435,9 +443,9 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionEn
 
     async resolveCompletion(
         document: Document,
-        completionItem: AppCompletionItem<CompletionEntryWithIdentifer>,
+        completionItem: AppCompletionItem<CompletionEntryWithIdentifier>,
         cancellationToken?: CancellationToken
-    ): Promise<AppCompletionItem<CompletionEntryWithIdentifer>> {
+    ): Promise<AppCompletionItem<CompletionEntryWithIdentifier>> {
         const { data: comp } = completionItem;
         const { tsDoc, lang, userPreferences } = await this.lsAndTsDocResolver.getLSAndTSDoc(
             document
@@ -589,8 +597,8 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionEn
                 start: isInTag(originalTriggerPosition, doc.scriptInfo)
                     ? fragment.scriptInfo?.start || scriptTagInfo.start
                     : isInTag(originalTriggerPosition, doc.moduleScriptInfo)
-                    ? fragment.moduleScriptInfo?.start || scriptTagInfo.start
-                    : scriptTagInfo.start,
+                        ? fragment.moduleScriptInfo?.start || scriptTagInfo.start
+                        : scriptTagInfo.start,
                 length: span.length
             });
         }

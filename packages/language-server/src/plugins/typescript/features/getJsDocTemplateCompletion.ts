@@ -8,6 +8,7 @@ import {
     TextEdit
 } from 'vscode-languageserver';
 import { mapRangeToOriginal } from '../../../lib/documents';
+import { AppCompletionList } from '../../interfaces';
 import { SvelteSnapshotFragment } from '../DocumentSnapshot';
 
 const DEFAULT_SNIPPET = `/**${ts.sys.newLine} * $0${ts.sys.newLine} */`;
@@ -17,7 +18,7 @@ export function getJsDocTemplateCompletion(
     lang: ts.LanguageService,
     filePath: string,
     offset: number
-): CompletionList | null {
+): AppCompletionList | null {
     const template = lang.getDocCommentTemplateAtPosition(filePath, offset);
 
     if (!template) {
