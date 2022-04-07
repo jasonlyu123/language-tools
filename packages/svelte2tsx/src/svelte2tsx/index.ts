@@ -226,6 +226,11 @@ function processSvelteTemplate(
             case 'InlineComponent':
                 handleComponentLet(node);
                 break;
+            case 'TemplateLiteral':
+            case 'Text':
+            case 'Literal':
+                scripts.filterOutScriptTagInsideString(node);
+                break;
         }
     };
 

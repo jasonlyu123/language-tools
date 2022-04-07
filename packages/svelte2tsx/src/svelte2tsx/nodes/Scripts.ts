@@ -21,6 +21,16 @@ export class Scripts {
         }
     };
 
+    filterOutScriptTagInsideString = (textNode: Node) => {
+        this.topLevelScripts = this.topLevelScripts.filter(
+            (tag) => !(tag.start >= textNode.start && tag.end <= textNode.end)
+        );
+
+        this.scriptTags = this.scriptTags.filter(
+            (tag) => !(tag.start >= textNode.start && tag.end <= textNode.end)
+        );
+    };
+
     getTopLevelScriptTags(): { scriptTag: Node; moduleScriptTag: Node } {
         let scriptTag: Node = null;
         let moduleScriptTag: Node = null;
