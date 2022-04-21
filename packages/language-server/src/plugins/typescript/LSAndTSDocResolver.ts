@@ -29,8 +29,11 @@ export class LSAndTSDocResolver {
         private readonly configManager: LSConfigManager,
         private readonly notifyExceedSizeLimit?: () => void,
         private readonly isSvelteCheck = false,
-        private readonly tsconfigPath?: string
+        private readonly tsconfigPath?: string,
+        globalSnapshotsManager?: GlobalSnapshotsManager
     ) {
+        this.globalSnapshotsManager = globalSnapshotsManager ?? new GlobalSnapshotsManager();
+
         const handleDocumentChange = (document: Document) => {
             // This refreshes the document in the ts language service
             this.getSnapshot(document);
@@ -64,7 +67,7 @@ export class LSAndTSDocResolver {
         return document;
     };
 
-    private globalSnapshotsManager = new GlobalSnapshotsManager();
+    private globalSnapshotsManager: GlobalSnapshotsManager;
 
     private get lsDocumentContext(): LanguageServiceDocumentContext {
         return {
@@ -164,6 +167,10 @@ export class LSAndTSDocResolver {
             throw new Error('Cannot call getTSService without filePath and without tsconfigPath');
         }
         return getService(filePath, this.workspaceUris, this.lsDocumentContext);
+    }
+
+    getSymlinks(path: string) {
+        return this.globalSnapshotsManager.getSymlinks(path);
     }
 
     private getUserPreferences(scriptKind: ts.ScriptKind): ts.UserPreferences {

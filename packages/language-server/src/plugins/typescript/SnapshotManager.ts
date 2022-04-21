@@ -5,6 +5,10 @@ import { TextDocumentContentChangeEvent } from 'vscode-languageserver';
 import { normalizePath } from '../../utils';
 import { EventEmitter } from 'events';
 
+interface SnapshotManagerHost {
+    realpath?: (path: string) => string;
+}
+
 /**
  * Every snapshot corresponds to a unique file on disk.
  * A snapshot can be part of multiple projects, but for a given file path
@@ -13,6 +17,18 @@ import { EventEmitter } from 'events';
 export class GlobalSnapshotsManager {
     private emitter = new EventEmitter();
     private documents = new Map<string, DocumentSnapshot>();
+    private realPathToSymlink = new Map<string, string[]>();
+    private readonly host: SnapshotManagerHost;
+
+    constructor(host?: SnapshotManagerHost) {
+        this.host = host ?? {
+            realpath: ts.sys.realpath
+        };
+    }
+
+    getSymlinks(realPath: string) {
+        return this.realPathToSymlink.get(normalizePath(realPath));
+    }
 
     get(fileName: string) {
         fileName = normalizePath(fileName);
@@ -24,6 +40,8 @@ export class GlobalSnapshotsManager {
         const prev = this.get(fileName);
         if (prev) {
             prev.destroyFragment();
+        } else {
+            this.checkRealPath(fileName);
         }
 
         this.documents.set(fileName, document);
@@ -62,6 +80,20 @@ export class GlobalSnapshotsManager {
             }
             this.set(fileName, newSnapshot);
             return newSnapshot;
+        }
+    }
+
+    private checkRealPath(fileName: string) {
+        const realPath = this.host.realpath?.(fileName);
+        const normalizedRealPath = realPath && normalizePath(realPath);
+
+        if (normalizedRealPath && normalizedRealPath != fileName) {
+            console.log('realpath:', normalizedRealPath);
+            console.log('filename:', fileName);
+            this.realPathToSymlink.set(
+                normalizedRealPath,
+                (this.realPathToSymlink.get(normalizedRealPath) ?? []).concat(fileName)
+            );
         }
     }
 
@@ -138,7 +170,7 @@ export class SnapshotManager {
 
     has(fileName: string): boolean {
         fileName = normalizePath(fileName);
-        return this.projectFiles.includes(fileName) || this.getFileNames().includes(fileName);
+        return this.projectFiles.includes(fileName) || this.documents.has(fileName);
     }
 
     set(fileName: string, snapshot: DocumentSnapshot): void {

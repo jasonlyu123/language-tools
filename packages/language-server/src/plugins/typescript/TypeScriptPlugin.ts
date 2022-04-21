@@ -446,6 +446,12 @@ export class TypeScriptPlugin
                 await this.lsAndTsDocResolver.deleteSnapshot(fileName);
             } else {
                 await this.lsAndTsDocResolver.updateExistingTsOrJsFile(fileName);
+
+                const symlinks = this.lsAndTsDocResolver.getSymlinks(fileName) ?? [];
+
+                for (const symlink of symlinks) {
+                    await this.lsAndTsDocResolver.updateExistingTsOrJsFile(symlink);
+                }
             }
         }
     }
