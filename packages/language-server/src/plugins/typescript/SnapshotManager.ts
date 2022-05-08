@@ -38,9 +38,7 @@ export class GlobalSnapshotsManager {
     set(fileName: string, document: DocumentSnapshot) {
         fileName = normalizePath(fileName);
         const prev = this.get(fileName);
-        if (prev) {
-            prev.destroyFragment();
-        } else {
+        if (!prev) {
             this.checkRealPath(fileName);
         }
 

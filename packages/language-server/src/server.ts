@@ -37,6 +37,7 @@ import { debounceThrottle, isNotNullOrUndefined, normalizeUri, urlToPath } from 
 import { FallbackWatcher } from './lib/FallbackWatcher';
 import { configLoader } from './lib/documents/configLoader';
 import { setIsTrusted } from './importPackage';
+import { SORT_IMPORT_CODE_ACTION_KIND } from './plugins/typescript/features/CodeActionsProvider';
 
 namespace TagCloseRequest {
     export const type: RequestType<TextDocumentPositionParams, string | null, any> =
@@ -143,6 +144,7 @@ export function startServer(options?: LSOptions) {
                 !evt.initializationOptions?.dontFilterIncompleteCompletions,
             definitionLinkSupport: !!evt.capabilities.textDocument?.definition?.linkSupport
         });
+        // Order of plugin registration matters for FirstNonNull, which affects for example hover info
         pluginHost.register((sveltePlugin = new SveltePlugin(configManager)));
         pluginHost.register(new HTMLPlugin(docManager, configManager));
         pluginHost.register(new CSSPlugin(docManager, configManager));
@@ -211,6 +213,7 @@ export function startServer(options?: LSOptions) {
                           codeActionKinds: [
                               CodeActionKind.QuickFix,
                               CodeActionKind.SourceOrganizeImports,
+                              SORT_IMPORT_CODE_ACTION_KIND,
                               ...(clientSupportApplyEditCommand ? [CodeActionKind.Refactor] : [])
                           ]
                       }
