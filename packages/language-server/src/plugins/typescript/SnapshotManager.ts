@@ -86,8 +86,6 @@ export class GlobalSnapshotsManager {
         const normalizedRealPath = realPath && normalizePath(realPath);
 
         if (normalizedRealPath && normalizedRealPath != fileName) {
-            console.log('realpath:', normalizedRealPath);
-            console.log('filename:', fileName);
             this.realPathToSymlink.set(
                 normalizedRealPath,
                 (this.realPathToSymlink.get(normalizedRealPath) ?? []).concat(fileName)
