@@ -3,6 +3,7 @@ import { IfScope } from './if-scope';
 import { BaseNode } from '../../interfaces';
 import { withTrailingPropertyAccess } from '../utils/node-utils';
 import { extractConstTags } from './const-tag';
+import { overwriteStr, preprendStr } from '../../utils/magic-string';
 
 /**
  * {# if ...}...{/if}   --->   {() => {if(...){<>...</>}}}
@@ -17,10 +18,12 @@ export function handleIf(
     const constTags = extractConstTags(ifBlock.children);
     const ifConditionEnd = htmlx.indexOf('}', ifBlock.expression.end) + 1;
     const hasConstTags = !!constTags.length;
-    const endIIFE = hasConstTags ? '</>})()}' : '';
-    const startIIFE = hasConstTags ? '{(() => {' : '';
+    const endIIFE = createEndIIFE(hasConstTags);
+    const startIIFE = createStartIIFE(hasConstTags);
 
     if (hasConstTags) {
+        ifScope.hasConstTags = true;
+
         // {@const hi = exp} <div>{hi}> -> {(() => { const hi = exp; return <> <div>{hi}<div></> })}
 
         constTags.forEach((constTag) => {
@@ -33,6 +36,7 @@ export function handleIf(
     if (ifBlock.elseif) {
         // {:else if expr}  ->  : (expr) ? <>
         const elseIfStart = htmlx.lastIndexOf('{', ifBlock.expression.start);
+        // overwriteStr(str, elseIfStart, ifBlock.expression.start, '</> : (');
         str.overwrite(elseIfStart, ifBlock.expression.start, '</> : (', {
             contentOnly: true
         });
@@ -44,8 +48,13 @@ export function handleIf(
 
         ifScope.addElseIf(ifBlock.expression, str);
 
+        // str.appendLeft(endIf, endIIFE);
+        // preprendStr(str, endIf, endIIFE);
         if (!ifBlock.else) {
-            str.appendLeft(endIf, endIIFE + '</> : <>');
+            preprendStr(str, endIf,  endIIFE +'</> : <>');
+            // str.appendLeft(endIf, endIIFE + '</> : <>');
+        } else {
+            preprendStr(str, endIf, endIIFE);
         }
         return;
     }
@@ -65,6 +74,7 @@ export function handleIf(
     if (ifBlock.else) {
         const elseWord = htmlx.lastIndexOf(':else', ifBlock.else.start);
         const elseStart = htmlx.lastIndexOf('{', elseWord);
+        // preprendStr(str, elseStart, endIIFE);
         str.appendLeft(elseStart, endIIFE);
 
         // {/if}  ->  </> }
@@ -75,6 +85,14 @@ export function handleIf(
             contentOnly: true
         });
     }
+}
+
+function createStartIIFE(hasConstTags: boolean) {
+    return hasConstTags ? '{(() => {' : '';
+}
+
+function createEndIIFE(hasConstTags: boolean) {
+    return hasConstTags ? '</>})()}' : '';
 }
 
 /**
@@ -93,10 +111,26 @@ export function handleElse(
     ) {
         return;
     }
+
     const elseEnd = htmlx.lastIndexOf('}', elseBlock.start);
     const elseword = htmlx.lastIndexOf(':else', elseEnd);
     const elseStart = htmlx.lastIndexOf('{', elseword);
-    str.overwrite(elseStart, elseEnd + 1, '</> : <>');
+    const constTags = extractConstTags(elseBlock.children);
+    const hasConstTags = !!constTags.length;
+
+    str.overwrite(elseStart, elseEnd + 1, '</> : <>' + createStartIIFE(hasConstTags));
+    // overwriteStr(str, elseStart, elseEnd + 1, '</> : <>' + createStartIIFE(hasConstTags));
 
     ifScope.addElse();
+
+    if (!hasConstTags) {
+        return;
+    }
+
+    constTags.forEach((constTag) => {
+        constTag(elseEnd + 1, str);
+    });
+
+    str.appendRight(elseEnd + 1, 'return <>');
+    str.appendLeft(elseBlock.end, createEndIIFE(true));
 }

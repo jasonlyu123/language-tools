@@ -238,6 +238,8 @@ export class IfScope {
     private ownScope = this.scope.value;
     private replacementPrefix = REPLACEMENT_PREFIX.repeat(this.computeDepth());
 
+    hasConstTags = false;
+
     constructor(
         private scope: { value: TemplateScope },
         private current?: Condition,
