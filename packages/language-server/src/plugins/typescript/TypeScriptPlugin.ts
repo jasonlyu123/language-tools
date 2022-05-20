@@ -439,19 +439,25 @@ export class TypeScriptPlugin
                 continue;
             }
 
-            if (changeType === FileChangeType.Created && !doneUpdateProjectFiles) {
-                doneUpdateProjectFiles = true;
-                await this.lsAndTsDocResolver.updateProjectFiles();
-            } else if (changeType === FileChangeType.Deleted) {
-                await this.lsAndTsDocResolver.deleteSnapshot(fileName);
-            } else {
-                await this.lsAndTsDocResolver.updateExistingTsOrJsFile(fileName);
-
-                const symlinks = this.lsAndTsDocResolver.getSymlinks(fileName) ?? [];
-
-                for (const symlink of symlinks) {
-                    await this.lsAndTsDocResolver.updateExistingTsOrJsFile(symlink);
+            if (changeType === FileChangeType.Created) {
+                if (!doneUpdateProjectFiles) {
+                    doneUpdateProjectFiles = true;
+                    await this.lsAndTsDocResolver.updateProjectFiles();
                 }
+                continue;
+            }
+
+            if (changeType === FileChangeType.Deleted) {
+                await this.lsAndTsDocResolver.deleteSnapshot(fileName);
+                return;
+            }
+
+            await this.lsAndTsDocResolver.updateExistingTsOrJsFile(fileName);
+
+            const symlinks = this.lsAndTsDocResolver.getSymlinks(fileName) ?? [];
+
+            for (const symlink of symlinks) {
+                await this.lsAndTsDocResolver.updateExistingTsOrJsFile(symlink);
             }
         }
     }
