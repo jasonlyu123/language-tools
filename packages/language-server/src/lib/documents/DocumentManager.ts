@@ -119,6 +119,10 @@ export class DocumentManager {
         return this.documents.get(normalizeUri(uri));
     }
 
+    isOpenedInClient(uri: string) {
+        return this.openedInClient.has(normalizeUri(uri));
+    }
+
     private notify(name: DocumentEvent, document: Document) {
         this.emitter.emit(name, document);
     }

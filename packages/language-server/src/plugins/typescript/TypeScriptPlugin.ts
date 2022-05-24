@@ -1,4 +1,4 @@
-import ts, { NavigationTree } from 'typescript';
+import { NavigationTree } from 'typescript';
 import {
     CancellationToken,
     CodeAction,
@@ -68,12 +68,7 @@ import { isNoTextSpanInGeneratedCode, SnapshotFragmentMap } from './features/uti
 import { LSAndTSDocResolver } from './LSAndTSDocResolver';
 import { ignoredBuildDirectories } from './SnapshotManager';
 import { isAttributeName, isAttributeShorthand, isEventHandler } from './svelte-ast-utils';
-import {
-    convertToLocationRange,
-    getScriptKindFromFileName,
-    isInScript,
-    symbolKindFromString
-} from './utils';
+import { convertToLocationRange, isInScript, symbolKindFromString } from './utils';
 
 export class TypeScriptPlugin
     implements
@@ -433,9 +428,11 @@ export class TypeScriptPlugin
                 continue;
             }
 
-            const scriptKind = getScriptKindFromFileName(fileName);
-            if (scriptKind === ts.ScriptKind.Unknown) {
-                // We don't deal with svelte files here
+            // client files should be handled by the docManager
+            if (
+                fileName.endsWith('.svelte') &&
+                this.lsAndTsDocResolver.isOpenedInClient(fileName)
+            ) {
                 continue;
             }
 
@@ -444,6 +441,7 @@ export class TypeScriptPlugin
                     doneUpdateProjectFiles = true;
                     await this.lsAndTsDocResolver.updateProjectFiles();
                 }
+
                 continue;
             }
 
@@ -452,13 +450,7 @@ export class TypeScriptPlugin
                 return;
             }
 
-            await this.lsAndTsDocResolver.updateExistingTsOrJsFile(fileName);
-
-            const symlinks = this.lsAndTsDocResolver.getSymlinks(fileName) ?? [];
-
-            for (const symlink of symlinks) {
-                await this.lsAndTsDocResolver.updateExistingTsOrJsFile(symlink);
-            }
+            await this.lsAndTsDocResolver.updateExistingFile(fileName);
         }
     }
 

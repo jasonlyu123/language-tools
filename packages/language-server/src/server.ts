@@ -101,7 +101,7 @@ export function startServer(options?: LSOptions) {
 
         if (!evt.capabilities.workspace?.didChangeWatchedFiles) {
             const workspacePaths = workspaceUris.map(urlToPath).filter(isNotNullOrUndefined);
-            watcher = new FallbackWatcher('**/*.{ts,js}', workspacePaths);
+            watcher = new FallbackWatcher('**/*.{ts,js,svelte}', workspacePaths);
             watcher.onDidChangeWatchedFiles(onDidChangeWatchedFiles);
         }
 
