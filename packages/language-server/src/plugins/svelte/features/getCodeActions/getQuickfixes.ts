@@ -1,5 +1,5 @@
 import { walk } from 'estree-walker';
-import { EOL } from 'os';
+// import { EOL } from 'os';
 import { Ast } from 'svelte/types/compiler/interfaces';
 import {
     CodeAction,
@@ -121,7 +121,7 @@ async function getSvelteIgnoreEdit(svelteDoc: SvelteDocument, ast: Ast, diagnost
     const indent = getIndent(afterStartLineStart);
 
     // TODO: Make all code action's new line consistent
-    const ignore = `${indent}<!-- svelte-ignore ${code} -->${EOL}`;
+    const ignore = `${indent}<!-- svelte-ignore ${code} -->${ts.sys.newLine}`;
     const position = Position.create(nodeStartPosition.line, 0);
 
     return mapObjWithRangeToOriginal(transpiled, TextEdit.insert(position, ignore));

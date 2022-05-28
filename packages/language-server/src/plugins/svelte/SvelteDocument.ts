@@ -46,7 +46,10 @@ export class SvelteDocument {
         return this.parent.configPromise;
     }
 
-    constructor(private parent: Document) {
+    constructor(
+        private parent: Document,
+        private svelteCompiler?: typeof import('svelte/compiler')
+    ) {
         this.script = this.parent.scriptInfo;
         this.moduleScript = this.parent.moduleScriptInfo;
         this.style = this.parent.styleInfo;
@@ -67,21 +70,30 @@ export class SvelteDocument {
 
     async getTranspiled(): Promise<ITranspiledSvelteDocument> {
         if (!this.transpiledDoc) {
-            const {
-                version: { major, minor }
-            } = getPackageInfo('svelte', this.getFilePath());
+            let major: number;
+            let minor: number;
+
+            if (this.svelteCompiler) {
+                [major, minor] = this.svelteCompiler.VERSION.split('.').map((v) => parseInt(v));
+            } else {
+                ({
+                    version: { major, minor }
+                } = getPackageInfo('svelte', this.getFilePath()));
+            }
 
             if (major > 3 || (major === 3 && minor >= 32)) {
                 this.transpiledDoc = await TranspiledSvelteDocument.create(
                     this.parent,
-                    await this.config
+                    await this.config,
+                    this.svelteCompiler
                 );
             } else {
                 this.transpiledDoc = await FallbackTranspiledSvelteDocument.create(
                     this.parent,
                     (
                         await this.config
-                    )?.preprocess
+                    )?.preprocess,
+                    this.svelteCompiler
                 );
             }
         }
@@ -97,7 +109,7 @@ export class SvelteDocument {
     }
 
     async getCompiledWith(options: CompileOptions = {}): Promise<SvelteCompileResult> {
-        const svelte = importSvelte(this.getFilePath());
+        const svelte = this.svelteCompiler ?? importSvelte(this.getFilePath());
         return svelte.compile((await this.getTranspiled()).getText(), options);
     }
 }
@@ -107,13 +119,17 @@ export interface ITranspiledSvelteDocument extends PositionMapper {
 }
 
 export class TranspiledSvelteDocument implements ITranspiledSvelteDocument {
-    static async create(document: Document, config: SvelteConfig | undefined) {
+    static async create(
+        document: Document,
+        config: SvelteConfig | undefined,
+        svelteCompiler?: typeof import('svelte/compiler')
+    ) {
         if (!config?.preprocess) {
             return new TranspiledSvelteDocument(document.getText());
         }
 
         const filename = document.getFilePath() || '';
-        const svelte = importSvelte(filename);
+        const svelte = svelteCompiler ?? importSvelte(filename);
         const preprocessed = await svelte.preprocess(
             document.getText(),
             wrapPreprocessors(config?.preprocess),
@@ -164,7 +180,8 @@ export class TranspiledSvelteDocument implements ITranspiledSvelteDocument {
 export class FallbackTranspiledSvelteDocument implements ITranspiledSvelteDocument {
     static async create(
         document: Document,
-        preprocessors: PreprocessorGroup | PreprocessorGroup[] = []
+        preprocessors: PreprocessorGroup | PreprocessorGroup[] = [],
+        svelteCompiler?: typeof import('svelte/compiler')
     ) {
         const { transpiled, processedScripts, processedStyles } = await transpile(
             document,
@@ -398,7 +415,8 @@ function wrapPreprocessors(preprocessors: PreprocessorGroup | PreprocessorGroup[
 
 async function transpile(
     document: Document,
-    preprocessors: PreprocessorGroup | PreprocessorGroup[] = []
+    preprocessors: PreprocessorGroup | PreprocessorGroup[] = [],
+    svelteCompiler?: typeof import('svelte/compiler')
 ) {
     preprocessors = Array.isArray(preprocessors) ? preprocessors : [preprocessors];
     const processedScripts: Processed[] = [];
@@ -440,7 +458,7 @@ async function transpile(
         return wrappedPreprocessor;
     });
 
-    const svelte = importSvelte(document.getFilePath() || '');
+    const svelte = svelteCompiler ?? importSvelte(document.getFilePath() || '');
     const result = await svelte.preprocess(document.getText(), wrappedPreprocessors, {
         filename: document.getFilePath() || ''
     });

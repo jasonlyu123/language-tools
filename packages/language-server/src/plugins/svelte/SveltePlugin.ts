@@ -44,7 +44,10 @@ export class SveltePlugin
     __name = 'svelte';
     private docManager = new Map<Document, SvelteDocument>();
 
-    constructor(private configManager: LSConfigManager) {}
+    constructor(
+        private configManager: LSConfigManager,
+        private svelteCompiler?: typeof import('svelte/compiler')
+    ) {}
 
     async getDiagnostics(document: Document): Promise<Diagnostic[]> {
         if (!this.featureEnabled('diagnostics') || !this.configManager.getIsTrusted()) {
@@ -223,7 +226,7 @@ export class SveltePlugin
     private async getSvelteDoc(document: Document) {
         let svelteDoc = this.docManager.get(document);
         if (!svelteDoc || svelteDoc.version !== document.version) {
-            svelteDoc = new SvelteDocument(document);
+            svelteDoc = new SvelteDocument(document, this.svelteCompiler);
             this.docManager.set(document, svelteDoc);
         }
         return svelteDoc;

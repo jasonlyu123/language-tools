@@ -5,7 +5,15 @@ import { importSveltePreprocess } from '../../importPackage';
 import _glob from 'fast-glob';
 import _path from 'path';
 import _fs from 'fs';
-import { pathToFileURL, URL } from 'url';
+import { pathToUrl } from '../../utils';
+// import { pathToFileURL, URL } from 'url';
+
+export interface ConfigLoader {
+    setDisabled(disabled: boolean): void;
+    loadConfigs(directory: string): Promise<void>;
+    getConfig(file: string): SvelteConfig | undefined;
+    awaitConfig(file: string): Promise<SvelteConfig | undefined> ;
+}
 
 export type InternalPreprocessorGroup = PreprocessorGroup & {
     /**
@@ -48,7 +56,7 @@ const _dynamicImport = new Function('modulePath', 'return import(modulePath)') a
  * sure that all config files are loaded before snapshots are retrieved.
  * Asynchronousity is needed because we use the dynamic `import()` statement.
  */
-export class ConfigLoader {
+export class ConfigLoaderImpl implements ConfigLoader {
     private configFiles = new Map<string, SvelteConfig>();
     private configFilesAsync = new Map<string, Promise<SvelteConfig>>();
     private filePathToConfigPath = new Map<string, string>();
@@ -151,7 +159,7 @@ export class ConfigLoader {
         try {
             let config = this.disabled
                 ? {}
-                : (await this.dynamicImport(pathToFileURL(configPath)))?.default;
+                : (await this.dynamicImport(new URL(pathToUrl(configPath))))?.default;
 
             if (!config) {
                 throw new Error(
@@ -262,4 +270,4 @@ export class ConfigLoader {
     }
 }
 
-export const configLoader = new ConfigLoader(_glob.sync, _fs, _path, _dynamicImport);
+export const configLoader = new ConfigLoaderImpl(_glob.sync, _fs, _path, _dynamicImport);

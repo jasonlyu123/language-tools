@@ -8,7 +8,56 @@ type DidChangeHandler = (para: DidChangeWatchedFilesParams) => void;
 
 const DELAY = 50;
 
-export class FallbackWatcher {
+export interface WorkspaceWatcher {
+    onDidChangeWatchedFiles(callback: DidChangeHandler): void;
+    dispose(): void;
+}
+
+export interface FileWatcher {
+    dispose(): void;
+    onChange(callback: (e: FileEvent) => void): void;
+}
+
+export class FileWatcher implements FileWatcher {
+    private readonly fileWatcher: FSWatcher;
+    private readonly callbacks = new Set<(e: FileEvent) => void>();
+
+    constructor(filesToWatch: string[]) {
+        this.fileWatcher = watch(filesToWatch)
+            .addListener('add', (file) =>
+                this.trigger({
+                    type: FileChangeType.Created,
+                    uri: pathToUrl(file)
+                })
+            )
+            .addListener('change', (file) =>
+                this.trigger({
+                    type: FileChangeType.Changed,
+                    uri: pathToUrl(file)
+                })
+            )
+            .addListener('unlink', (file) =>
+                this.trigger({
+                    type: FileChangeType.Changed,
+                    uri: pathToUrl(file)
+                })
+            );
+    }
+
+    private trigger(e: FileEvent) {
+        this.callbacks.forEach((callback) => callback(e));
+    }
+
+    onChange(callback: (e: FileEvent) => void): void {
+        this.callbacks.add(callback);
+    }
+
+    dispose(): void {
+        this.fileWatcher.close();
+    }
+}
+
+export class FallbackWatcher implements WorkspaceWatcher {
     private readonly watcher: FSWatcher;
     private readonly callbacks: DidChangeHandler[] = [];
 

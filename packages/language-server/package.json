@@ -8,7 +8,8 @@
         "test": "cross-env TS_NODE_TRANSPILE_ONLY=true mocha --require ts-node/register \"test/**/*.ts\" --exclude \"test/**/*.d.ts\"",
         "build": "tsc",
         "prepublishOnly": "npm run build",
-        "watch": "tsc -w"
+        "watch": "tsc -w",
+        "build:web": "rollup -c"
     },
     "bin": {
         "svelteserver": "bin/server.js"
@@ -48,10 +49,12 @@
     },
     "dependencies": {
         "@jridgewell/trace-mapping": "^0.3.9",
+        "@rollup/plugin-typescript": "8.3.2",
         "chokidar": "^3.4.1",
         "estree-walker": "^2.0.1",
         "fast-glob": "^3.2.7",
         "lodash": "^4.17.21",
+        "path-browserify": "^1.0.1",
         "prettier": "2.5.1",
         "prettier-plugin-svelte": "~2.7.0",
         "svelte": "^3.48.0",

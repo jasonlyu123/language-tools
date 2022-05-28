@@ -1,4 +1,4 @@
-import { EventEmitter } from 'events';
+// import { EventEmitter } from 'events';
 import {
     TextDocumentContentChangeEvent,
     TextDocumentItem,
@@ -6,6 +6,7 @@ import {
 } from 'vscode-languageserver';
 import { Document } from './Document';
 import { normalizeUri } from '../../utils';
+import { EventEmitter } from '../EventEmitter';
 
 export type DocumentEvent = 'documentOpen' | 'documentChange' | 'documentClose';
 

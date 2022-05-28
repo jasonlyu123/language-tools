@@ -1,6 +1,6 @@
 import MagicString from 'magic-string';
 import { Node } from 'estree-walker';
-import * as ts from 'typescript';
+import ts from 'typescript';
 import {
     getBinaryAssignmentExpr,
     isSafeToPrefixWithSemicolon,

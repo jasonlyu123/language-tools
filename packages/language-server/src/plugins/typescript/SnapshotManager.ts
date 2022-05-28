@@ -3,7 +3,8 @@ import { DocumentSnapshot, JSOrTSDocumentSnapshot } from './DocumentSnapshot';
 import { Logger } from '../../logger';
 import { TextDocumentContentChangeEvent } from 'vscode-languageserver';
 import { normalizePath } from '../../utils';
-import { EventEmitter } from 'events';
+import { EventEmitter } from '../../lib/EventEmitter';
+// import { EventEmitter } from 'events';
 
 /**
  * Every snapshot corresponds to a unique file on disk.

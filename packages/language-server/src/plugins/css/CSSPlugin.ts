@@ -58,15 +58,20 @@ export class CSSPlugin
     private configManager: LSConfigManager;
     private cssDocuments = new WeakMap<Document, CSSDocument>();
     private triggerCharacters = ['.', ':', '-', '/'];
-    private globalVars = new GlobalVars();
+    private globalVars?: GlobalVars;
 
-    constructor(docManager: DocumentManager, configManager: LSConfigManager) {
+    constructor(
+        docManager: DocumentManager,
+        configManager: LSConfigManager,
+        globalVars?: GlobalVars
+    ) {
         this.configManager = configManager;
         this.updateConfigs();
+        this.globalVars = globalVars;
 
-        this.globalVars.watchFiles(this.configManager.get('css.globals'));
+        this.globalVars?.watchFiles(this.configManager.get('css.globals'));
         this.configManager.onChange((config) => {
-            this.globalVars.watchFiles(config.get('css.globals'));
+            this.globalVars?.watchFiles(config.get('css.globals'));
             this.updateConfigs();
         });
 
@@ -279,14 +284,13 @@ export class CSSPlugin
             return items;
         }
 
-        const additionalItems: CompletionItem[] = this.globalVars
-            .getGlobalVars()
-            .map((globalVar) => ({
+        const additionalItems: CompletionItem[] =
+            this.globalVars?.getGlobalVars().map((globalVar) => ({
                 label: `var(${globalVar.name})`,
                 sortText: '-',
                 detail: `${globalVar.filename}\n\n${globalVar.name}: ${globalVar.value}`,
                 kind: CompletionItemKind.Value
-            }));
+            })) ?? [];
         return [...items, ...additionalItems];
     }
 

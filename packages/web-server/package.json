@@ -1,0 +1,19 @@
+{
+  "name": "svelte-web-language-server",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "devDependencies": {
+    "svelte-language-server": "*"
+  },
+  "dependencies": {
+    "@typescript/vfs": "^1.3.5",
+    "rollup-plugin-analyzer": "^4.0.0",
+    "rollup-plugin-polyfill-node": "^0.9.0",
+    "typescript": "^4.6.2",
+    "rollup": "2.52.7"
+  },
+  "scripts": {
+    "build": "rollup -c"
+  }
+}

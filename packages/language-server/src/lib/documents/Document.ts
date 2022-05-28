@@ -2,7 +2,7 @@ import { urlToPath } from '../../utils';
 import { WritableDocument } from './DocumentBase';
 import { extractScriptTags, extractStyleTag, extractTemplateTag, TagInformation } from './utils';
 import { parseHtml } from './parseHtml';
-import { SvelteConfig, configLoader } from './configLoader';
+import { SvelteConfig, ConfigLoader } from './configLoader';
 import { HTMLDocument } from 'vscode-html-languageservice';
 import { Range } from 'vscode-languageserver';
 
@@ -24,9 +24,9 @@ export class Document extends WritableDocument {
      */
     private path = urlToPath(this.url);
 
-    constructor(public url: string, public content: string) {
+    constructor(public url: string, public content: string, private configLoader?: ConfigLoader) {
         super();
-        this.configPromise = configLoader.awaitConfig(this.getFilePath() || '');
+        this.configPromise = configLoader?.awaitConfig(this.getFilePath() || '') ?? Promise.resolve(undefined);
         this.updateDocInfo();
     }
 
@@ -53,7 +53,7 @@ export class Document extends WritableDocument {
             );
         };
 
-        const config = configLoader.getConfig(this.getFilePath() || '');
+        const config = this.configLoader?.getConfig(this.getFilePath() || '');
         if (config && !config.loadConfigError) {
             update(config);
         } else {

@@ -3,7 +3,7 @@ import ts from 'typescript';
 import { TextDocumentContentChangeEvent } from 'vscode-languageserver-protocol';
 import { getPackageInfo } from '../../importPackage';
 import { Document } from '../../lib/documents';
-import { configLoader } from '../../lib/documents/configLoader';
+import { ConfigLoader } from '../../lib/documents/configLoader';
 import { Logger } from '../../logger';
 import { normalizePath } from '../../utils';
 import { DocumentSnapshot, SvelteSnapshotOptions } from './DocumentSnapshot';
@@ -55,11 +55,16 @@ export function __resetCache() {
 
 export interface LanguageServiceDocumentContext {
     ambientTypesSource: string;
+    /**
+     * Only used in browser environment
+     */
+    ambientTypesDirPath?: string;
     transformOnTemplateError: boolean;
     useNewTransformation: boolean;
     createDocument: (fileName: string, content: string) => Document;
     globalSnapshotsManager: GlobalSnapshotsManager;
     notifyExceedSizeLimit: (() => void) | undefined;
+    configLoader?: ConfigLoader;
 }
 
 export async function getService(
@@ -113,29 +118,31 @@ async function createLanguageService(
         docContext.globalSnapshotsManager,
         files,
         raw,
-        workspacePath || process.cwd()
+        workspacePath || globalThis.process?.cwd()
     );
 
     // Load all configs within the tsconfig scope and the one above so that they are all loaded
     // by the time they need to be accessed synchronously by DocumentSnapshots to determine
     // the default language.
-    await configLoader.loadConfigs(workspacePath);
+    await docContext.configLoader?.loadConfigs(workspacePath);
 
     const svelteModuleLoader = createSvelteModuleLoader(getSnapshot, compilerOptions);
 
-    let svelteTsPath: string;
-    try {
-        // For when svelte2tsx/svelte-check is part of node_modules, for example VS Code extension
-        svelteTsPath = dirname(require.resolve(docContext.ambientTypesSource));
-    } catch (e) {
-        // Fall back to dirname
-        svelteTsPath = __dirname;
-    }
-    const svelteTsxFiles = [
-        './svelte-shims.d.ts',
-        './svelte-jsx.d.ts',
-        './svelte-native-jsx.d.ts'
-    ].map((f) => ts.sys.resolvePath(resolve(svelteTsPath, f)));
+    // let svelteTsPath = docContext.ambientTypesDirPath ?? '';
+    // if (!svelteTsPath) {
+    //     try {
+    //         // For when svelte2tsx/svelte-check is part of node_modules, for example VS Code extension
+    //         svelteTsPath = dirname(require.resolve(docContext.ambientTypesSource));
+    //     } catch (e) {
+    //         // Fall back to dirname
+    //         svelteTsPath = __dirname;
+    //     }
+    // }
+    // const svelteTsxFiles = [
+    //     './svelte-shims.d.ts',
+    //     './svelte-jsx.d.ts',
+    //     './svelte-native-jsx.d.ts'
+    // ].map((f) => ts.sys.resolvePath(resolve(svelteTsPath, f)));
 
     let languageServiceReducedMode = false;
     let projectVersion = 0;
@@ -146,14 +153,17 @@ async function createLanguageService(
             Array.from(
                 new Set([
                     ...(languageServiceReducedMode ? [] : snapshotManager.getProjectFileNames()),
-                    ...snapshotManager.getFileNames(),
-                    ...svelteTsxFiles
+                    ...snapshotManager.getFileNames()
+                    // ...svelteTsxFiles
                 ])
             ),
         getScriptVersion: (fileName: string) => getSnapshot(fileName).version.toString(),
         getScriptSnapshot: getSnapshot,
         getCurrentDirectory: () => workspacePath,
-        getDefaultLibFileName: ts.getDefaultLibFilePath,
+        getDefaultLibFileName:
+            typeof process === 'undefined'
+                ? (opt) => '/' + ts.getDefaultLibFileName(opt)
+                : ts.getDefaultLibFilePath,
         fileExists: svelteModuleLoader.fileExists,
         readFile: svelteModuleLoader.readFile,
         resolveModuleNames: svelteModuleLoader.resolveModuleNames,

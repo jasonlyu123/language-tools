@@ -1,6 +1,6 @@
-import { watch, FSWatcher } from 'chokidar';
-import { readFile } from 'fs';
-import { isNotNullOrUndefined, flatten } from '../../utils';
+import { FileChangeType } from 'vscode-languageserver';
+import { FileWatcher } from '../../lib/FallbackWatcher';
+import { isNotNullOrUndefined, flatten, urlToPath } from '../../utils';
 
 const varRegex = /^\s*(--\w+.*?):\s*?([^;]*)/;
 
@@ -11,8 +11,13 @@ export interface GlobalVar {
 }
 
 export class GlobalVars {
-    private fsWatcher?: FSWatcher;
+    private fsWatcher?: FileWatcher;
     private globalVars = new Map<string, GlobalVar[]>();
+
+    constructor(
+        private readonly createWatcher: (files: string[]) => FileWatcher,
+        private readonly readFile: (file: string, encoding: string) => Promise<string>
+    ) {}
 
     watchFiles(filesToWatch: string): void {
         if (!filesToWatch) {
@@ -20,34 +25,43 @@ export class GlobalVars {
         }
 
         if (this.fsWatcher) {
-            this.fsWatcher.close();
+            this.fsWatcher.dispose();
             this.globalVars.clear();
         }
 
-        this.fsWatcher = watch(filesToWatch.split(','))
-            .addListener('add', (file) => this.updateForFile(file))
-            .addListener('change', (file) => {
+        this.fsWatcher = this.createWatcher(filesToWatch.split(','));
+
+        this.fsWatcher.onChange(e => {
+            const file = urlToPath(e.uri);
+            if (!file) {
+                return;
+            }
+
+            if (e.type === FileChangeType.Created) {
                 this.updateForFile(file);
-            })
-            .addListener('unlink', (file) => this.globalVars.delete(file));
+            } else if (e.type === FileChangeType.Changed) {
+                this.updateForFile(file);
+            } else if (e.type === FileChangeType.Deleted) {
+                this.globalVars.delete(file);
+            }
+        });
     }
 
     private updateForFile(filename: string) {
         // Inside a small timeout because it seems chikidar is "too fast"
         // and reading the file will then return empty content
-        setTimeout(() => {
-            readFile(filename, 'utf-8', (error, contents) => {
-                if (error) {
-                    return;
-                }
-
+        setTimeout(async () => {
+            try {
+                const contents = await this.readFile(filename, 'utf-8');
                 const globalVarsForFile = contents
-                    .split('\n')
-                    .map((line) => line.match(varRegex))
-                    .filter(isNotNullOrUndefined)
-                    .map((line) => ({ filename, name: line[1], value: line[2] }));
-                this.globalVars.set(filename, globalVarsForFile);
-            });
+                .split('\n')
+                .map((line) => line.match(varRegex))
+                .filter(isNotNullOrUndefined)
+                .map((line) => ({ filename, name: line[1], value: line[2] }));
+            this.globalVars.set(filename, globalVarsForFile);
+            } catch (error) {
+                return;
+            }
         }, 1000);
     }
 

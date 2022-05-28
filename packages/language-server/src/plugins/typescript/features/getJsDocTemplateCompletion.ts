@@ -10,14 +10,13 @@ import {
 import { mapRangeToOriginal } from '../../../lib/documents';
 import { SvelteSnapshotFragment } from '../DocumentSnapshot';
 
-const DEFAULT_SNIPPET = `/**${ts.sys.newLine} * $0${ts.sys.newLine} */`;
-
 export function getJsDocTemplateCompletion(
     fragment: SvelteSnapshotFragment,
     lang: ts.LanguageService,
     filePath: string,
     offset: number
 ): CompletionList | null {
+    const DEFAULT_SNIPPET = `/**${ts.sys.newLine} * $0${ts.sys.newLine} */`;
     const template = lang.getDocCommentTemplateAtPosition(filePath, offset);
 
     if (!template) {
