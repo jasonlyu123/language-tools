@@ -1,9 +1,7 @@
-import ts from 'typescript';
 import { Connection } from 'vscode-languageserver';
 import { createConnection, IPCMessageReader, IPCMessageWriter } from 'vscode-languageserver/node';
 import { FallbackWatcher } from './lib/FallbackWatcher';
 import { startServerCommon } from './serverCommon';
-import { htmlData } from 'vscode-html-languageservice/lib/umd/languageFacts/data/webCustomData';
 import { Document, DocumentManager } from './lib/documents';
 import { configLoader } from './lib/documents/configLoader';
 // import { createDataProvider } from './plugins/html/dataProvider';
@@ -46,8 +44,6 @@ export function startServer(options?: LSOptions) {
         connection,
         logErrorsOnly: false,
         createWatcher: (...args) => new FallbackWatcher(...args),
-        system: ts.sys,
-        // htmlDataProvider: createDataProvider(htmlData),
         documentManger: new DocumentManager(
             (textDocument) => new Document(textDocument.uri, textDocument.text, configLoader)
         )
