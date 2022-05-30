@@ -264,6 +264,11 @@ type DeepPartial<T> = T extends CompilerWarningsSettings
           [P in keyof T]?: DeepPartial<T[P]>;
       };
 
+// TODO type it
+export type VSCodePrettierConfig = any;
+
+export type PartialSvelteLSConfig = DeepPartial<LSConfig>
+
 export class LSConfigManager {
     private config: LSConfig = defaultLSConfig;
     private listeners: Array<(config: LSConfigManager) => void> = [];
@@ -291,7 +296,7 @@ export class LSConfigManager {
     /**
      * Updates config.
      */
-    update(config: DeepPartial<LSConfig>): void {
+    update(config: PartialSvelteLSConfig): void {
         // Ideally we shouldn't need the merge here because all updates should be valid and complete configs.
         // But since those configs come from the client they might be out of synch with the valid config:
         // We might at some point in the future forget to synch config settings in all packages after updating the config.
@@ -376,10 +381,11 @@ export class LSConfigManager {
         );
     }
 
-    updateTsJsUserPreferences(config: Record<TsUserConfigLang, TSUserConfig>): void {
+    updateTsJsUserPreferences(config: Partial<Record<TsUserConfigLang, TSUserConfig>>): void {
         (['typescript', 'javascript'] as const).forEach((lang) => {
-            if (config[lang]) {
-                this._updateTsUserPreferences(lang, config[lang]);
+            const langConfig = config[lang];
+            if (langConfig) {
+                this._updateTsUserPreferences(lang, langConfig);
             }
         });
         this.listeners.forEach((listener) => listener(this));

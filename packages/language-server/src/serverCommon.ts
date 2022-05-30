@@ -15,14 +15,20 @@ import {
     SemanticTokensRequest,
     SemanticTokensRangeRequest,
     DidChangeWatchedFilesParams,
-    LinkedEditingRangeRequest,
-    InitializeParams
+    LinkedEditingRangeRequest
 } from 'vscode-languageserver';
 import { DiagnosticsManager } from './lib/DiagnosticsManager';
 import { Document, DocumentManager } from './lib/documents';
 import { getSemanticTokenLegends } from './lib/semanticToken/semanticTokenLegend';
 import { Logger } from './logger';
-import { LSConfigManager } from './ls-config';
+import {
+    CssConfig,
+    LSConfigManager,
+    PartialSvelteLSConfig,
+    TSUserConfig,
+    TsUserConfigLang,
+    VSCodePrettierConfig
+} from './ls-config';
 import {
     AppCompletionItem,
     CSSPlugin,
@@ -35,11 +41,9 @@ import {
 } from './plugins';
 import { debounceThrottle, isNotNullOrUndefined, normalizeUri, urlToPath } from './utils';
 import { WorkspaceWatcher } from './lib/FallbackWatcher';
-// import { configLoader } from './lib/documents/configLoader';
 import { setIsTrusted } from './importPackage';
 import { SORT_IMPORT_CODE_ACTION_KIND } from './plugins/typescript/features/CodeActionsProvider';
-import ts from 'typescript';
-// import { IHTMLDataProvider } from 'vscode-html-languageservice';
+import { VSCodeEmmetConfig } from 'vscode-emmet-helper';
 
 namespace TagCloseRequest {
     export const type: RequestType<TextDocumentPositionParams, string | null, any> =
@@ -47,7 +51,6 @@ namespace TagCloseRequest {
 }
 
 export interface ServerOption {
-    // htmlDataProvider: IHTMLDataProvider,
     /**
      * If you have a connection already that the ls should use, pass it in.
      * Else the connection will be created from `process`.
@@ -58,16 +61,63 @@ export interface ServerOption {
      * Defaults to false.
      */
     logErrorsOnly?: boolean;
-
-    system: ts.System,
-    createWatcher?: (glob: string, workspacePaths: string[]) => WorkspaceWatcher,
-    documentManger: DocumentManager
+    createWatcher?: (glob: string, workspacePaths: string[]) => WorkspaceWatcher;
+    documentManger: DocumentManager;
     svelte?: typeof import('svelte/compiler');
     prettier?: typeof import('prettier');
 
-    initialize?: (opt: InitializeParams) => Promise<void>
+    initialize?: (opt: SvelteLSInitializationOptions | undefined) => void;
 }
 
+export interface SvelteLSInitializationOptions {
+    configuration: {
+        svelte: {
+            plugin: PartialSvelteLSConfig;
+        };
+        prettier: VSCodePrettierConfig;
+        emmet: VSCodeEmmetConfig;
+        typescript: TSUserConfig;
+        javascript: TSUserConfig;
+        css: CssConfig;
+        less: CssConfig;
+        scss: CssConfig;
+    };
+
+    /**
+     * Whether the incomplete completions filtering should happen in the
+     * LSP client side
+     */
+    dontFilterIncompleteCompletions?: true;
+    isTrusted?: boolean;
+    /**
+     * Whether to filter CodeActionKind based on
+     * the CodeActionKinds client specified in the
+     * `codeActionLiteralSupport` capabilities
+     */
+    shouldFilterCodeActionKind?: boolean;
+
+    webExtension?: {
+        libFiles: Record<string, string>
+    }
+
+    /**
+     * @deprecated use {@link configuration}.svelte.plugin instead
+     */
+    config?: PartialSvelteLSConfig;
+    /**
+     * @deprecated use {@link configuration}.typescript and configuration.javascript instead
+     */
+    typescriptConfig?: Record<TsUserConfigLang, TSUserConfig>;
+    /**
+     * @deprecated use {@link configuration}.emmet instead
+     */
+    emmetConfig: VSCodeEmmetConfig;
+    /**
+     *
+     * @deprecated use {@link configuration}.emmet instead
+     */
+    prettierConfig: VSCodePrettierConfig;
+}
 
 /**
  * Starts the language server.
@@ -90,8 +140,12 @@ export function startServerCommon(options: ServerOption) {
     let watcher: WorkspaceWatcher | undefined;
 
     connection.onInitialize(async (evt) => {
+        const initializationOptions = evt.initializationOptions as
+            | SvelteLSInitializationOptions
+            | undefined;
+
         if (options.initialize) {
-            await options.initialize(evt);
+            options.initialize(initializationOptions);
         }
 
         const workspaceUris = evt.workspaceFolders?.map((folder) => folder.uri.toString()) ?? [
@@ -108,7 +162,7 @@ export function startServerCommon(options: ServerOption) {
             watcher?.onDidChangeWatchedFiles(onDidChangeWatchedFiles);
         }
 
-        const isTrusted: boolean = evt.initializationOptions?.isTrusted ?? true;
+        const isTrusted: boolean = initializationOptions?.isTrusted ?? true;
         // configLoader.setDisabled(!isTrusted);
         setIsTrusted(isTrusted);
         configManager.updateIsTrusted(isTrusted);
@@ -118,33 +172,28 @@ export function startServerCommon(options: ServerOption) {
 
         // Backwards-compatible way of setting initialization options (first `||` is the old style)
         configManager.update(
-            evt.initializationOptions?.configuration?.svelte?.plugin ||
-                evt.initializationOptions?.config ||
+            initializationOptions?.configuration?.svelte?.plugin ||
+                initializationOptions?.config ||
                 {}
         );
         configManager.updateTsJsUserPreferences(
-            evt.initializationOptions?.configuration ||
-                evt.initializationOptions?.typescriptConfig ||
-                {}
+            initializationOptions?.configuration || initializationOptions?.typescriptConfig || {}
         );
         configManager.updateEmmetConfig(
-            evt.initializationOptions?.configuration?.emmet ||
-                evt.initializationOptions?.emmetConfig ||
-                {}
+            initializationOptions?.configuration?.emmet || initializationOptions?.emmetConfig || {}
         );
         configManager.updatePrettierConfig(
-            evt.initializationOptions?.configuration?.prettier ||
-                evt.initializationOptions?.prettierConfig ||
+            initializationOptions?.configuration?.prettier ||
+                initializationOptions?.prettierConfig ||
                 {}
         );
         // no old style as these were added later
-        configManager.updateCssConfig(evt.initializationOptions?.configuration?.css);
-        configManager.updateScssConfig(evt.initializationOptions?.configuration?.scss);
-        configManager.updateLessConfig(evt.initializationOptions?.configuration?.less);
+        configManager.updateCssConfig(initializationOptions?.configuration?.css);
+        configManager.updateScssConfig(initializationOptions?.configuration?.scss);
+        configManager.updateLessConfig(initializationOptions?.configuration?.less);
 
         pluginHost.initialize({
-            filterIncompleteCompletions:
-                !evt.initializationOptions?.dontFilterIncompleteCompletions,
+            filterIncompleteCompletions: !initializationOptions?.dontFilterIncompleteCompletions,
             definitionLinkSupport: !!evt.capabilities.textDocument?.definition?.linkSupport
         });
         // Order of plugin registration matters for FirstNonNull, which affects for example hover info
@@ -222,7 +271,7 @@ export function startServerCommon(options: ServerOption) {
                               ...(clientSupportApplyEditCommand ? [CodeActionKind.Refactor] : [])
                           ].filter(
                               clientSupportedCodeActionKinds &&
-                                  evt.initializationOptions?.shouldFilterCodeActionKind
+                                  initializationOptions?.shouldFilterCodeActionKind
                                   ? (kind) => clientSupportedCodeActionKinds.includes(kind)
                                   : () => true
                           )

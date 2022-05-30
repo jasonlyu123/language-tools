@@ -43,6 +43,8 @@ const maxProgramSizeForNonTsFiles = 20 * 1024 * 1024; // 20 MB
 const services = new Map<string, Promise<LanguageServiceContainer>>();
 const serviceSizeMap: Map<string, number> = new Map();
 
+export const LIB_VIRTUAL_DIR_PATH = '/';
+
 /**
  * For testing only: Reset the cache for services.
  * Try to refactor this some day so that this file provides
@@ -55,10 +57,6 @@ export function __resetCache() {
 
 export interface LanguageServiceDocumentContext {
     ambientTypesSource: string;
-    /**
-     * Only used in browser environment
-     */
-    ambientTypesDirPath?: string;
     transformOnTemplateError: boolean;
     useNewTransformation: boolean;
     createDocument: (fileName: string, content: string) => Document;
@@ -127,22 +125,14 @@ async function createLanguageService(
     await docContext.configLoader?.loadConfigs(workspacePath);
 
     const svelteModuleLoader = createSvelteModuleLoader(getSnapshot, compilerOptions);
+    const isNode = typeof process != 'undefined';
 
-    // let svelteTsPath = docContext.ambientTypesDirPath ?? '';
-    // if (!svelteTsPath) {
-    //     try {
-    //         // For when svelte2tsx/svelte-check is part of node_modules, for example VS Code extension
-    //         svelteTsPath = dirname(require.resolve(docContext.ambientTypesSource));
-    //     } catch (e) {
-    //         // Fall back to dirname
-    //         svelteTsPath = __dirname;
-    //     }
-    // }
-    // const svelteTsxFiles = [
-    //     './svelte-shims.d.ts',
-    //     './svelte-jsx.d.ts',
-    //     './svelte-native-jsx.d.ts'
-    // ].map((f) => ts.sys.resolvePath(resolve(svelteTsPath, f)));
+    const svelteTsPath = isNode ? loadSvelteTsLibPath() : LIB_VIRTUAL_DIR_PATH;
+    const svelteTsxFiles = [
+        './svelte-shims.d.ts',
+        './svelte-jsx.d.ts',
+        './svelte-native-jsx.d.ts'
+    ].map((f) => ts.sys.resolvePath(resolve(svelteTsPath, f)));
 
     let languageServiceReducedMode = false;
     let projectVersion = 0;
@@ -153,8 +143,8 @@ async function createLanguageService(
             Array.from(
                 new Set([
                     ...(languageServiceReducedMode ? [] : snapshotManager.getProjectFileNames()),
-                    ...snapshotManager.getFileNames()
-                    // ...svelteTsxFiles
+                    ...snapshotManager.getFileNames(),
+                    ...svelteTsxFiles
                 ])
             ),
         getScriptVersion: (fileName: string) => getSnapshot(fileName).version.toString(),
@@ -162,7 +152,7 @@ async function createLanguageService(
         getCurrentDirectory: () => workspacePath,
         getDefaultLibFileName:
             typeof process === 'undefined'
-                ? (opt) => '/' + ts.getDefaultLibFileName(opt)
+                ? (opt) => LIB_VIRTUAL_DIR_PATH + ts.getDefaultLibFileName(opt)
                 : ts.getDefaultLibFilePath,
         fileExists: svelteModuleLoader.fileExists,
         readFile: svelteModuleLoader.readFile,
@@ -200,6 +190,15 @@ async function createLanguageService(
         fileBelongsToProject,
         snapshotManager
     };
+
+    function loadSvelteTsLibPath() {
+        try {
+            return dirname(require.resolve(docContext.ambientTypesSource));
+        } catch (e) {
+            // Fall back to dirname
+            return __dirname;
+        }
+    }
 
     function deleteSnapshot(filePath: string): void {
         svelteModuleLoader.deleteFromModuleCache(filePath);
