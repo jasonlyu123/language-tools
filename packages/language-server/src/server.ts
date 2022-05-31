@@ -4,7 +4,6 @@ import { FallbackWatcher } from './lib/FallbackWatcher';
 import { startServerCommon } from './serverCommon';
 import { Document, DocumentManager } from './lib/documents';
 import { configLoader } from './lib/documents/configLoader';
-// import { createDataProvider } from './plugins/html/dataProvider';
 
 export interface LSOptions {
     /**
