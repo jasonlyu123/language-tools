@@ -193,7 +193,7 @@ export class LSAndTSDocResolver {
         await forAllServices((service) => {
             if (service.hasFile(path) && !didUpdate) {
                 didUpdate = true;
-                service.updateSnapshot(path);
+                service.updateSnapshot(path, /**force */true);
             }
         });
     }

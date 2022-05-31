@@ -23,7 +23,7 @@ export interface LanguageServiceContainer {
      */
     readonly snapshotManager: SnapshotManager;
     getService(): ts.LanguageService;
-    updateSnapshot(documentOrFilePath: Document | string): DocumentSnapshot;
+    updateSnapshot(documentOrFilePath: Document | string, force?: boolean): DocumentSnapshot;
     deleteSnapshot(filePath: string): void;
     updateProjectFiles(): void;
     updateTsOrJsFile(fileName: string, changes?: TextDocumentContentChangeEvent[]): void;
@@ -139,6 +139,7 @@ async function createLanguageService(
 
     let languageServiceReducedMode = false;
     let projectVersion = 0;
+    let pendingServiceRestart = false;
 
     const host: ts.LanguageServiceHost = {
         getCompilationSettings: () => compilerOptions,
@@ -181,7 +182,7 @@ async function createLanguageService(
     return {
         tsconfigPath,
         compilerOptions,
-        getService: () => languageService,
+        getService,
         updateSnapshot,
         deleteSnapshot,
         updateProjectFiles,
@@ -191,14 +192,24 @@ async function createLanguageService(
         snapshotManager
     };
 
+    function getService() {
+        if (pendingServiceRestart) {
+            languageService.dispose();
+            languageService = ts.createLanguageService(host);
+            pendingServiceRestart = false;
+        }
+
+        return languageService;
+    }
+
     function deleteSnapshot(filePath: string): void {
         svelteModuleLoader.deleteFromModuleCache(filePath);
         snapshotManager.delete(filePath);
     }
 
-    function updateSnapshot(documentOrFilePath: Document | string): DocumentSnapshot {
+    function updateSnapshot(documentOrFilePath: Document | string, force?: boolean): DocumentSnapshot {
         return typeof documentOrFilePath === 'string'
-            ? updateSnapshotFromFilePath(documentOrFilePath)
+            ? updateSnapshotFromFilePath(documentOrFilePath, force)
             : updateSnapshotFromDocument(documentOrFilePath);
     }
 
@@ -216,18 +227,22 @@ async function createLanguageService(
         const newSnapshot = DocumentSnapshot.fromDocument(document, transformationConfig);
 
         snapshotManager.set(filePath, newSnapshot);
-        if (prevSnapshot && prevSnapshot.scriptKind !== newSnapshot.scriptKind) {
-            // Restart language service as it doesn't handle script kind changes.
-            languageService.dispose();
-            languageService = ts.createLanguageService(host);
-        }
+
+        restartIfScriptKindChanges(prevSnapshot, newSnapshot);
 
         return newSnapshot;
     }
 
-    function updateSnapshotFromFilePath(filePath: string): DocumentSnapshot {
+    function restartIfScriptKindChanges(prevSnapshot: DocumentSnapshot | undefined, newSnapshot: DocumentSnapshot) {
+        if (prevSnapshot && prevSnapshot.scriptKind !== newSnapshot.scriptKind) {
+            // Restart language service as it doesn't handle script kind changes.
+            pendingServiceRestart = true;
+        }
+    }
+
+    function updateSnapshotFromFilePath(filePath: string, reloadFromFs = false): DocumentSnapshot {
         const prevSnapshot = snapshotManager.get(filePath);
-        if (prevSnapshot) {
+        if (prevSnapshot && !reloadFromFs) {
             return prevSnapshot;
         }
 
@@ -238,6 +253,9 @@ async function createLanguageService(
             transformationConfig
         );
         snapshotManager.set(filePath, newSnapshot);
+
+        restartIfScriptKindChanges(prevSnapshot, newSnapshot);
+
         return newSnapshot;
     }
 
