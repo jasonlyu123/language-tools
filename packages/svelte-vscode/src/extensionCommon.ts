@@ -1,4 +1,3 @@
-import * as path from 'path';
 import {
     commands,
     ExtensionContext,
@@ -18,13 +17,13 @@ import {
 import {
     ExecuteCommandRequest,
     LanguageClientOptions,
+    BaseLanguageClient,
     RequestType,
     RevealOutputChannelOn,
     TextDocumentEdit,
     TextDocumentPositionParams,
     WorkspaceEdit as LSWorkspaceEdit
 } from 'vscode-languageclient';
-import { LanguageClient, ServerOptions, TransportKind } from 'vscode-languageclient/node';
 import CompiledCodeContentProvider from './CompiledCodeContentProvider';
 import { activateTagClosing } from './html/autoClose';
 import { EMPTY_ELEMENTS } from './html/htmlEmptyTagsShared';
@@ -37,20 +36,22 @@ namespace TagCloseRequest {
     );
 }
 
-export function activate(context: ExtensionContext) {
+export type CreateLanguageClient = (id: string, name: string, clientOptions: LanguageClientOptions) => BaseLanguageClient
+
+export function activateCommon(context: ExtensionContext, createLanguageClient: CreateLanguageClient) {
     // The extension is activated on TS/JS/Svelte files because else it might be too late to configure the TS plugin:
     // If we only activate on Svelte file and the user opens a TS file first, the configuration command is issued too late.
     // We wait until there's a Svelte file open and only then start the actual language client.
     const tsPlugin = new TsPlugin(context);
-    let lsApi: { getLS(): LanguageClient } | undefined;
+    let lsApi: { getLS(): BaseLanguageClient } | undefined;
 
     if (workspace.textDocuments.some((doc) => doc.languageId === 'svelte')) {
-        lsApi = activateSvelteLanguageServer(context);
+        lsApi = activateSvelteLanguageServer(context, createLanguageClient);
         tsPlugin.askToEnable();
     } else {
         const onTextDocumentListener = workspace.onDidOpenTextDocument((doc) => {
             if (doc.languageId === 'svelte') {
-                lsApi = activateSvelteLanguageServer(context);
+                lsApi = activateSvelteLanguageServer(context, createLanguageClient);
                 tsPlugin.askToEnable();
                 onTextDocumentListener.dispose();
             }
@@ -68,7 +69,7 @@ export function activate(context: ExtensionContext) {
          */
         getLanguageServer() {
             if (!lsApi) {
-                lsApi = activateSvelteLanguageServer(context);
+                lsApi = activateSvelteLanguageServer(context, createLanguageClient);
             }
 
             return lsApi.getLS();
@@ -76,54 +77,8 @@ export function activate(context: ExtensionContext) {
     };
 }
 
-export function activateSvelteLanguageServer(context: ExtensionContext) {
+export function activateSvelteLanguageServer(context: ExtensionContext, createLanguageClient: CreateLanguageClient) {
     warnIfOldExtensionInstalled();
-
-    const runtimeConfig = workspace.getConfiguration('svelte.language-server');
-
-    const { workspaceFolders } = workspace;
-    const rootPath = Array.isArray(workspaceFolders) ? workspaceFolders[0].uri.fsPath : undefined;
-
-    const tempLsPath = runtimeConfig.get<string>('ls-path');
-    // Returns undefined if path is empty string
-    // Return absolute path if not already
-    const lsPath =
-        tempLsPath && tempLsPath.trim() !== ''
-            ? path.isAbsolute(tempLsPath)
-                ? tempLsPath
-                : path.join(rootPath as string, tempLsPath)
-            : undefined;
-
-    const serverModule = require.resolve(lsPath || 'svelte-language-server/bin/server.js');
-    console.log('Loading server from ', serverModule);
-
-    // Add --experimental-modules flag for people using node 12 < version < 12.17
-    // Remove this in mid 2022 and bump vs code minimum required version to 1.55
-    const runExecArgv: string[] = ['--experimental-modules'];
-    let port = runtimeConfig.get<number>('port') ?? -1;
-    if (port < 0) {
-        port = 6009;
-    } else {
-        console.log('setting port to', port);
-        runExecArgv.push(`--inspect=${port}`);
-    }
-    const debugOptions = { execArgv: ['--nolazy', '--experimental-modules', `--inspect=${port}`] };
-
-    const serverOptions: ServerOptions = {
-        run: {
-            module: serverModule,
-            transport: TransportKind.ipc,
-            options: { execArgv: runExecArgv }
-        },
-        debug: { module: serverModule, transport: TransportKind.ipc, options: debugOptions }
-    };
-
-    const serverRuntime = runtimeConfig.get<string>('runtime');
-    if (serverRuntime) {
-        serverOptions.run.runtime = serverRuntime;
-        serverOptions.debug.runtime = serverRuntime;
-        console.log('setting server runtime to', serverRuntime);
-    }
 
     const clientOptions: LanguageClientOptions = {
         documentSelector: [{ scheme: 'file', language: 'svelte' }],
@@ -143,7 +98,8 @@ export function activateSvelteLanguageServer(context: ExtensionContext) {
             fileEvents: workspace.createFileSystemWatcher('{**/*.js,**/*.ts}', false, false, false)
         },
         initializationOptions: {
-            configuration: {
+            // method can't be posted inside web worker
+            configuration: JSON.parse(JSON.stringify({
                 svelte: workspace.getConfiguration('svelte'),
                 prettier: workspace.getConfiguration('prettier'),
                 emmet: workspace.getConfiguration('emmet'),
@@ -152,13 +108,13 @@ export function activateSvelteLanguageServer(context: ExtensionContext) {
                 css: workspace.getConfiguration('css'),
                 less: workspace.getConfiguration('less'),
                 scss: workspace.getConfiguration('scss')
-            },
+            })),
             dontFilterIncompleteCompletions: true, // VSCode filters client side and is smarter at it than us
             isTrusted: (workspace as any).isTrusted
         }
     };
 
-    let ls = createLanguageServer(serverOptions, clientOptions);
+    let ls = createLanguageClient('svelte', 'Svelte', clientOptions);
     context.subscriptions.push(ls.start());
 
     ls.onReady().then(() => {
@@ -209,7 +165,7 @@ export function activateSvelteLanguageServer(context: ExtensionContext) {
 
         restartingLs = true;
         await ls.stop();
-        ls = createLanguageServer(serverOptions, clientOptions);
+        ls = createLanguageClient('svelte', 'Svelte', clientOptions);
         context.subscriptions.push(ls.start());
         await ls.onReady();
         if (showNotification) {
@@ -306,7 +262,7 @@ export function activateSvelteLanguageServer(context: ExtensionContext) {
     };
 }
 
-function addDidChangeTextDocumentListener(getLS: () => LanguageClient) {
+function addDidChangeTextDocumentListener(getLS: () => BaseLanguageClient) {
     // Only Svelte file changes are automatically notified through the inbuilt LSP
     // because the extension says it's only responsible for Svelte files.
     // Therefore we need to set this up for TS/JS files manually.
@@ -326,7 +282,7 @@ function addDidChangeTextDocumentListener(getLS: () => LanguageClient) {
     });
 }
 
-function addRenameFileListener(getLS: () => LanguageClient) {
+function addRenameFileListener(getLS: () => BaseLanguageClient) {
     workspace.onDidRenameFiles(async (evt) => {
         const oldUri = evt.files[0].oldUri.toString(true);
         const parts = oldUri.split(/\/|\\/);
@@ -412,7 +368,7 @@ function addRenameFileListener(getLS: () => LanguageClient) {
     });
 }
 
-function addCompilePreviewCommand(getLS: () => LanguageClient, context: ExtensionContext) {
+function addCompilePreviewCommand(getLS: () => BaseLanguageClient, context: ExtensionContext) {
     const compiledCodeContentProvider = new CompiledCodeContentProvider(getLS);
 
     context.subscriptions.push(
@@ -444,7 +400,7 @@ function addCompilePreviewCommand(getLS: () => LanguageClient, context: Extensio
     );
 }
 
-function addExtracComponentCommand(getLS: () => LanguageClient, context: ExtensionContext) {
+function addExtracComponentCommand(getLS: () => BaseLanguageClient, context: ExtensionContext) {
     context.subscriptions.push(
         commands.registerTextEditorCommand('svelte.extractComponent', async (editor) => {
             if (editor?.document?.languageId !== 'svelte') {
@@ -471,10 +427,6 @@ function addExtracComponentCommand(getLS: () => LanguageClient, context: Extensi
             });
         })
     );
-}
-
-function createLanguageServer(serverOptions: ServerOptions, clientOptions: LanguageClientOptions) {
-    return new LanguageClient('svelte', 'Svelte', serverOptions, clientOptions);
 }
 
 function warnIfOldExtensionInstalled() {

@@ -1,4 +1,4 @@
-import { LanguageClient } from 'vscode-languageclient/node';
+import { BaseLanguageClient } from 'vscode-languageclient';
 import {
     Uri,
     TextDocumentContentProvider,
@@ -54,7 +54,7 @@ export default class CompiledCodeContentProvider implements TextDocumentContentP
         return this.didChangeEmitter.event;
     }
 
-    constructor(private getLanguageClient: () => LanguageClient) {
+    constructor(private getLanguageClient: () => BaseLanguageClient) {
         this.subscriptions.push(
             workspace.onDidChangeTextDocument(
                 debounce(async (changeEvent) => {
