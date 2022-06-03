@@ -65,6 +65,7 @@ export async function importSvelte(fromPath: string): Promise<typeof svelte> {
     if (typeof process === 'undefined') {
         const svelte = await import('svelte/compiler');
         Logger.log('Using bundled Svelte v' + svelte.VERSION);
+        return svelte;
     }
 
     const pkg = getPackageInfo('svelte', fromPath);
