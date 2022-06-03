@@ -5,8 +5,7 @@ import { importSveltePreprocess } from '../../importPackage';
 import _glob from 'fast-glob';
 import _path from 'path';
 import _fs from 'fs';
-import { pathToUrl } from '../../utils';
-// import { pathToFileURL, URL } from 'url';
+import { pathToFileURL, URL } from 'url';
 
 export type InternalPreprocessorGroup = PreprocessorGroup & {
     /**
@@ -39,7 +38,7 @@ const NO_GENERATE: CompileOptions = {
  * https://github.com/microsoft/TypeScript/issues/43329
  */
 const _dynamicImport = new Function('modulePath', 'return import(modulePath)') as (
-    modulePath: any
+    modulePath: URL
 ) => Promise<any>;
 
 /**
@@ -152,7 +151,7 @@ export class ConfigLoader {
         try {
             let config = this.disabled
                 ? {}
-                : (await this.dynamicImport(new URL(pathToUrl(configPath))))?.default;
+                : (await this.dynamicImport(pathToFileURL(configPath)))?.default;
 
             if (!config) {
                 throw new Error(

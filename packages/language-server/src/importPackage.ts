@@ -33,12 +33,18 @@ export function getPackageInfo(packageName: string, fromPath: string) {
     const packageJSONPath = require.resolve(`${packageName}/package.json`, {
         paths
     });
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { version } = dynamicRequire(packageJSONPath);
-    const [major, minor, patch] = version.split('.');
 
     return {
         path: dirname(packageJSONPath),
+        ...parsePackageVersion(version)
+    };
+}
+
+export function parsePackageVersion(version: string) {
+    const [major, minor, patch] = version.split('.');
+
+    return {
         version: {
             full: version,
             major: Number(major),
@@ -55,7 +61,12 @@ export function importPrettier(fromPath: string): typeof prettier {
     return dynamicRequire(main);
 }
 
-export function importSvelte(fromPath: string): typeof svelte {
+export async function importSvelte(fromPath: string): Promise<typeof svelte> {
+    if (typeof process === 'undefined') {
+        const svelte = await import('svelte/compiler');
+        Logger.log('Using bundled Svelte v' + svelte.VERSION);
+    }
+
     const pkg = getPackageInfo('svelte', fromPath);
     const main = resolve(pkg.path, 'compiler');
     Logger.log('Using Svelte v' + pkg.version.full, 'from', main);

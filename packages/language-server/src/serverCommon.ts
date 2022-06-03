@@ -63,7 +63,6 @@ export interface ServerOption {
     logErrorsOnly?: boolean;
     createWatcher?: (glob: string, workspacePaths: string[]) => WorkspaceWatcher;
     documentManger: DocumentManager;
-    svelte?: typeof import('svelte/compiler');
     prettier?: typeof import('prettier');
 
     initialize?: (opt: SvelteLSInitializationOptions | undefined) => void;
@@ -198,7 +197,7 @@ export function startServerCommon(options: ServerOption) {
             definitionLinkSupport: !!evt.capabilities.textDocument?.definition?.linkSupport
         });
         // Order of plugin registration matters for FirstNonNull, which affects for example hover info
-        pluginHost.register((sveltePlugin = new SveltePlugin(configManager, options.svelte)));
+        pluginHost.register((sveltePlugin = new SveltePlugin(configManager)));
         pluginHost.register(new HTMLPlugin(docManager, configManager));
         pluginHost.register(new CSSPlugin(docManager, configManager));
         pluginHost.register(

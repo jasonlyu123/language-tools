@@ -8,7 +8,6 @@ import {
 } from 'vscode-languageserver/browser';
 import { Document, DocumentManager } from './lib/documents';
 import { startServerCommon, SvelteLSInitializationOptions } from './serverCommon';
-import * as svelte from 'svelte/compiler';
 import { normalizePath, urlToPath } from './utils';
 
 console.debug('Svelte Web server starting...');
@@ -37,7 +36,6 @@ async function main() {
         documentManger: new DocumentManager(
             (textDocument) => new Document(textDocument.uri, textDocument.text)
         ),
-        svelte,
         initialize(initializationOptions: SvelteLSInitializationOptions | undefined) {
             const libFiles: Record<string, string> =
                 initializationOptions?.webExtension?.libFiles ?? {};
