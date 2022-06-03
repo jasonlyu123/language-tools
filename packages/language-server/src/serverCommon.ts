@@ -97,7 +97,8 @@ export interface SvelteLSInitializationOptions {
     shouldFilterCodeActionKind?: boolean;
 
     webExtension?: {
-        libFiles: Record<string, string>
+        libFiles?: Record<string, string>
+        files?: Record<string, string>
     }
 
     /**
