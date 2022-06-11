@@ -169,8 +169,33 @@ export class LSAndTSDocResolver {
         return getService(filePath, this.workspaceUris, this.lsDocumentContext);
     }
 
-    getSymlinks(path: string) {
-        return this.globalSnapshotsManager.getSymlinks(path);
+    async updateExistingFile(fileName: string) {
+        const updater = fileName.endsWith('.svelte')
+            ? this.updateExistingSvelteFile
+            : this.updateExistingTsOrJsFile;
+
+        await updater(fileName);
+
+        const symlinks = this.globalSnapshotsManager.getSymlinks(fileName) ?? [];
+
+        for (const symlink of symlinks) {
+            await updater(symlink);
+        }
+    }
+
+    isOpenedInClient(path: string) {
+        return this.docManager.isOpenedInClient(pathToUrl(path));
+    }
+
+    private async updateExistingSvelteFile(path: string) {
+        path = normalizePath(path);
+        let didUpdate = false;
+        await forAllServices((service) => {
+            if (service.hasFile(path) && !didUpdate) {
+                didUpdate = true;
+                service.updateSnapshot(path, /**force */true);
+            }
+        });
     }
 
     private getUserPreferences(scriptKind: ts.ScriptKind): ts.UserPreferences {
