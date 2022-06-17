@@ -106,7 +106,10 @@ export class LSAndTSDocResolver {
     async getSnapshot(pathOrDoc: string | Document) {
         const filePath = typeof pathOrDoc === 'string' ? pathOrDoc : pathOrDoc.getFilePath() || '';
         const tsService = await this.getTSService(filePath);
-        return tsService.updateSnapshot(pathOrDoc);
+
+        return typeof pathOrDoc === 'string'
+            ? tsService.updateSnapshotFromFilePath(pathOrDoc)
+            : tsService.updateSnapshotFromDocument(pathOrDoc);
     }
 
     /**
@@ -193,7 +196,7 @@ export class LSAndTSDocResolver {
         await forAllServices((service) => {
             if (service.hasFile(path) && !didUpdate) {
                 didUpdate = true;
-                service.updateSnapshot(path, /**force */true);
+                service.updateSnapshotFromFilePath(path, /**reloadFromFs */ true);
             }
         });
     }

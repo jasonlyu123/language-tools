@@ -23,7 +23,8 @@ export interface LanguageServiceContainer {
      */
     readonly snapshotManager: SnapshotManager;
     getService(): ts.LanguageService;
-    updateSnapshot(documentOrFilePath: Document | string, force?: boolean): DocumentSnapshot;
+    updateSnapshotFromDocument(document: Document): DocumentSnapshot;
+    updateSnapshotFromFilePath(filePath: string, reloadFromFs?: boolean): DocumentSnapshot;
     deleteSnapshot(filePath: string): void;
     updateProjectFiles(): void;
     updateTsOrJsFile(fileName: string, changes?: TextDocumentContentChangeEvent[]): void;
@@ -183,7 +184,8 @@ async function createLanguageService(
         tsconfigPath,
         compilerOptions,
         getService,
-        updateSnapshot,
+        updateSnapshotFromDocument,
+        updateSnapshotFromFilePath,
         deleteSnapshot,
         updateProjectFiles,
         updateTsOrJsFile,
@@ -207,12 +209,6 @@ async function createLanguageService(
         snapshotManager.delete(filePath);
     }
 
-    function updateSnapshot(documentOrFilePath: Document | string, force?: boolean): DocumentSnapshot {
-        return typeof documentOrFilePath === 'string'
-            ? updateSnapshotFromFilePath(documentOrFilePath, force)
-            : updateSnapshotFromDocument(documentOrFilePath);
-    }
-
     function updateSnapshotFromDocument(document: Document): DocumentSnapshot {
         const filePath = document.getFilePath() || '';
         const prevSnapshot = snapshotManager.get(filePath);
@@ -233,7 +229,10 @@ async function createLanguageService(
         return newSnapshot;
     }
 
-    function restartIfScriptKindChanges(prevSnapshot: DocumentSnapshot | undefined, newSnapshot: DocumentSnapshot) {
+    function restartIfScriptKindChanges(
+        prevSnapshot: DocumentSnapshot | undefined,
+        newSnapshot: DocumentSnapshot
+    ) {
         if (prevSnapshot && prevSnapshot.scriptKind !== newSnapshot.scriptKind) {
             // Restart language service as it doesn't handle script kind changes.
             pendingServiceRestart = true;
