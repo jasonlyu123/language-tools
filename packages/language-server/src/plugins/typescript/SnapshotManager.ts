@@ -5,9 +5,7 @@ import { TextDocumentContentChangeEvent } from 'vscode-languageserver';
 import { normalizePath } from '../../utils';
 import { EventEmitter } from 'events';
 
-interface SnapshotManagerHost {
-    realpath?: (path: string) => string;
-}
+type SnapshotChangeHandler = (fileName: string, newDocument: DocumentSnapshot | undefined) => void;
 
 /**
  * Every snapshot corresponds to a unique file on disk.
@@ -18,13 +16,8 @@ export class GlobalSnapshotsManager {
     private emitter = new EventEmitter();
     private documents = new Map<string, DocumentSnapshot>();
     private realPathToSymlink = new Map<string, string[]>();
-    private readonly host: SnapshotManagerHost;
 
-    constructor(host?: SnapshotManagerHost) {
-        this.host = host ?? {
-            realpath: ts.sys.realpath
-        };
-    }
+    constructor(private readonly tsSys = ts.sys) {}
 
     getSymlinks(realPath: string) {
         return this.realPathToSymlink.get(normalizePath(realPath));
@@ -82,7 +75,7 @@ export class GlobalSnapshotsManager {
     }
 
     private checkRealPath(fileName: string) {
-        const realPath = this.host.realpath?.(fileName);
+        const realPath = this.tsSys.realpath?.(fileName);
         const normalizedRealPath = realPath && normalizePath(realPath);
 
         if (normalizedRealPath && normalizedRealPath != fileName) {
@@ -93,8 +86,12 @@ export class GlobalSnapshotsManager {
         }
     }
 
-    onChange(listener: (fileName: string, newDocument: DocumentSnapshot | undefined) => void) {
+    onChange(listener: SnapshotChangeHandler) {
         this.emitter.on('change', listener);
+    }
+
+    removeChangeListener(listener: SnapshotChangeHandler) {
+        this.emitter.off('change', listener);
     }
 }
 
@@ -125,18 +122,21 @@ export class SnapshotManager {
         private fileSpec: TsFilesSpec,
         private workspaceRoot: string
     ) {
-        this.globalSnapshotsManager.onChange((fileName, document) => {
-            // Only delete/update snapshots, don't add new ones,
-            // as they could be from another TS service and this
-            // snapshot manager can't reach this file.
-            // For these, instead wait on a `get` method invocation
-            // and set them "manually" in the set/update methods.
-            if (!document) {
-                this.documents.delete(fileName);
-            } else if (this.documents.has(fileName)) {
-                this.documents.set(fileName, document);
-            }
-        });
+        this.onSnapshotChange = this.onSnapshotChange.bind(this);
+        this.globalSnapshotsManager.onChange(this.onSnapshotChange);
+    }
+
+    private onSnapshotChange(fileName: string, document: DocumentSnapshot | undefined) {
+        // Only delete/update snapshots, don't add new ones,
+        // as they could be from another TS service and this
+        // snapshot manager can't reach this file.
+        // For these, instead wait on a `get` method invocation
+        // and set them "manually" in the set/update methods.
+        if (!document) {
+            this.documents.delete(fileName);
+        } else if (this.documents.has(fileName)) {
+            this.documents.set(fileName, document);
+        }
     }
 
     updateProjectFiles(): void {
@@ -223,6 +223,10 @@ export class SnapshotManager {
                     `Total: ${allFiles.length}`
             );
         }
+    }
+
+    dispose() {
+        this.globalSnapshotsManager.removeChangeListener(this.onSnapshotChange);
     }
 }
 

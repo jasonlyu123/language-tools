@@ -21,11 +21,11 @@ import {
 import { LSConfigManager } from '../../../ls-config';
 import { flatten, getIndent, isNotNullOrUndefined, modifyLines, pathToUrl } from '../../../utils';
 import { CodeActionsProvider } from '../../interfaces';
-import { SnapshotFragment, SvelteSnapshotFragment } from '../DocumentSnapshot';
+import { DocumentSnapshot, SvelteDocumentSnapshot } from '../DocumentSnapshot';
 import { LSAndTSDocResolver } from '../LSAndTSDocResolver';
 import { changeSvelteComponentName, convertRange } from '../utils';
 import { CompletionsProviderImpl } from './CompletionProvider';
-import { findContainingNode, isNoTextSpanInGeneratedCode, SnapshotFragmentMap } from './utils';
+import { findContainingNode, isTextSpanInGeneratedCode, SnapshotMap } from './utils';
 
 /**
  * TODO change this to protocol constant if it's part of the protocol
@@ -101,9 +101,11 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
         }
 
         const { lang, tsDoc, userPreferences } = await this.getLSAndTSDoc(document);
-        const fragment = tsDoc.getFragment();
 
-        if (cancellationToken?.isCancellationRequested) {
+        if (cancellationToken?.isCancellationRequested || tsDoc.parserError) {
+            // If there's a parser error, we fall back to only the script contents,
+            // so organize imports likely throws out a lot of seemingly unused imports
+            // because they are only used in the template. Therefore do nothing in this case.
             return [];
         }
 
@@ -116,6 +118,9 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
                     }
                 )
             ).semi ?? true;
+        const documentUseLf =
+            document.getText().includes('\n') && !document.getText().includes('\r\n');
+
         const changes = lang.organizeImports(
             {
                 fileName: tsDoc.filePath,
@@ -123,6 +128,7 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
                 skipDestructiveCodeActions
             },
             {
+                newLineCharacter: documentUseLf ? '\n' : ts.sys.newLine,
                 semicolons: useSemicolons
                     ? ts.SemicolonPreference.Insert
                     : ts.SemicolonPreference.Remove
@@ -138,13 +144,13 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
                     change.textChanges.map((edit) => {
                         const range = this.checkRemoveImportCodeActionRange(
                             edit,
-                            fragment,
-                            mapRangeToOriginal(fragment, convertRange(fragment, edit.span))
+                            tsDoc,
+                            mapRangeToOriginal(tsDoc, convertRange(tsDoc, edit.span))
                         );
 
-                        return TextEdit.replace(
-                            range,
-                            this.fixIndentationOfImports(edit.newText, range, document)
+                        return this.fixIndentationOfImports(
+                            TextEdit.replace(range, edit.newText),
+                            document
                         );
                     })
                 );
@@ -162,11 +168,12 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
         ];
     }
 
-    private fixIndentationOfImports(edit: string, range: Range, document: Document): string {
-        // "Organize Imports" will have edits that delete all imports by return empty edits
-        // and one edit which contains all the organized imports. Fix indentation
+    private fixIndentationOfImports(edit: TextEdit, document: Document): TextEdit {
+        // "Organize Imports" will have edits that delete a group of imports by return empty edits
+        // and one edit which contains all the organized imports of the group. Fix indentation
         // of that one by prepending all lines with the indentation of the first line.
-        if (!edit || range.start.character === 0) {
+        const { newText, range } = edit;
+        if (!newText || range.start.character === 0) {
             return edit;
         }
 
@@ -175,12 +182,31 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
         if (leadingChars.trim() !== '') {
             return edit;
         }
-        return modifyLines(edit, (line, idx) => (idx === 0 || !line ? line : leadingChars + line));
+
+        const fixedNewText = modifyLines(edit.newText, (line, idx) =>
+            idx === 0 || !line ? line : leadingChars + line
+        );
+
+        if (range.end.character > 0) {
+            const endLine = getLineAtPosition(range.end, document.getText());
+            const isIndent = !endLine.substring(0, range.end.character).trim();
+
+            if (isIndent) {
+                const trimmedEndLine = endLine.trim();
+
+                // imports that would be removed by the next delete edit
+                if (trimmedEndLine && !trimmedEndLine.startsWith('import')) {
+                    range.end.character = 0;
+                }
+            }
+        }
+
+        return TextEdit.replace(range, fixedNewText);
     }
 
     private checkRemoveImportCodeActionRange(
         edit: ts.TextChange,
-        fragment: SnapshotFragment,
+        snapshot: DocumentSnapshot,
         range: Range
     ) {
         // Handle svelte2tsx wrong import mapping:
@@ -191,14 +217,14 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
             range.end.line < range.start.line
         ) {
             edit.span.length -= 1;
-            range = mapRangeToOriginal(fragment, convertRange(fragment, edit.span));
+            range = mapRangeToOriginal(snapshot, convertRange(snapshot, edit.span));
 
-            if (!(fragment instanceof SvelteSnapshotFragment)) {
+            if (!(snapshot instanceof SvelteDocumentSnapshot)) {
                 range.end.character += 1;
                 return range;
             }
 
-            const line = getLineAtPosition(range.end, fragment.originalText);
+            const line = getLineAtPosition(range.end, snapshot.getOriginalText());
             // remove-import code action will removes the
             // line break generated by svelte2tsx,
             // but when there's no line break in the source
@@ -223,14 +249,13 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
         cancellationToken: CancellationToken | undefined
     ) {
         const { lang, tsDoc, userPreferences } = await this.getLSAndTSDoc(document);
-        const fragment = tsDoc.getFragment();
 
         if (cancellationToken?.isCancellationRequested) {
             return [];
         }
 
-        const start = fragment.offsetAt(fragment.getGeneratedPosition(range.start));
-        const end = fragment.offsetAt(fragment.getGeneratedPosition(range.end));
+        const start = tsDoc.offsetAt(tsDoc.getGeneratedPosition(range.start));
+        const end = tsDoc.offsetAt(tsDoc.getGeneratedPosition(range.end));
         const errorCodes: number[] = context.diagnostics.map((diag) => Number(diag.code));
         let codeFixes = errorCodes.includes(2304) // "Cannot find name '...'."
             ? this.getComponentImportQuickFix(start, end, lang, tsDoc.filePath, userPreferences)
@@ -247,12 +272,12 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
                 userPreferences
             );
 
-        const docs = new SnapshotFragmentMap(this.lsAndTsDocResolver);
-        docs.set(tsDoc.filePath, { fragment, snapshot: tsDoc });
+        const snapshots = new SnapshotMap(this.lsAndTsDocResolver);
+        snapshots.set(tsDoc.filePath, tsDoc);
 
         const codeActionsPromises = codeFixes.map(async (fix) => {
             const documentChangesPromises = fix.changes.map(async (change) => {
-                const { snapshot, fragment } = await docs.retrieve(change.fileName);
+                const snapshot = await snapshots.retrieve(change.fileName);
                 return TextDocumentEdit.create(
                     OptionalVersionedTextDocumentIdentifier.create(
                         pathToUrl(change.fileName),
@@ -262,30 +287,30 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
                         .map((edit) => {
                             if (
                                 fix.fixName === 'import' &&
-                                fragment instanceof SvelteSnapshotFragment
+                                snapshot instanceof SvelteDocumentSnapshot
                             ) {
                                 return this.completionProvider.codeActionChangeToTextEdit(
                                     document,
-                                    fragment,
+                                    snapshot,
                                     edit,
                                     true,
                                     range.start
                                 );
                             }
 
-                            if (!isNoTextSpanInGeneratedCode(snapshot.getFullText(), edit.span)) {
+                            if (isTextSpanInGeneratedCode(snapshot.getFullText(), edit.span)) {
                                 return undefined;
                             }
 
                             let originalRange = mapRangeToOriginal(
-                                fragment,
-                                convertRange(fragment, edit.span)
+                                snapshot,
+                                convertRange(snapshot, edit.span)
                             );
 
                             if (fix.fixName === 'unusedIdentifier') {
                                 originalRange = this.checkRemoveImportCodeActionRange(
                                     edit,
-                                    fragment,
+                                    snapshot,
                                     originalRange
                                 );
                             }
@@ -438,15 +463,14 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
         }
 
         const { lang, tsDoc, userPreferences } = await this.getLSAndTSDoc(document);
-        const fragment = tsDoc.getFragment();
 
         if (cancellationToken?.isCancellationRequested) {
             return [];
         }
 
         const textRange = {
-            pos: fragment.offsetAt(fragment.getGeneratedPosition(range.start)),
-            end: fragment.offsetAt(fragment.getGeneratedPosition(range.end))
+            pos: tsDoc.offsetAt(tsDoc.getGeneratedPosition(range.start)),
+            end: tsDoc.offsetAt(tsDoc.getGeneratedPosition(range.end))
         };
         const applicableRefactors = lang.getApplicableRefactors(
             document.getFilePath() || '',
@@ -535,7 +559,6 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
         }
 
         const { lang, tsDoc, userPreferences } = await this.getLSAndTSDoc(document);
-        const fragment = tsDoc.getFragment();
         const path = document.getFilePath() || '';
         const { refactorName, originalRange, textRange } = <RefactorArgs>args[1];
 
@@ -555,7 +578,7 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
             TextDocumentEdit.create(
                 OptionalVersionedTextDocumentIdentifier.create(document.uri, null),
                 edit.textChanges.map((edit) => {
-                    const range = mapRangeToOriginal(fragment, convertRange(fragment, edit.span));
+                    const range = mapRangeToOriginal(tsDoc, convertRange(tsDoc, edit.span));
 
                     return TextEdit.replace(
                         this.checkEndOfFileCodeInsert(range, originalRange, document),

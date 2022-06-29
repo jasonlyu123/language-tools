@@ -38,6 +38,8 @@ import { FallbackWatcher } from './lib/FallbackWatcher';
 import { configLoader } from './lib/documents/configLoader';
 import { setIsTrusted } from './importPackage';
 import { SORT_IMPORT_CODE_ACTION_KIND } from './plugins/typescript/features/CodeActionsProvider';
+import { createLanguageServices } from './plugins/css/service';
+import { FileSystemProvider } from './plugins/css/FileSystemProvider';
 
 namespace TagCloseRequest {
     export const type: RequestType<TextDocumentPositionParams, string | null, any> =
@@ -147,20 +149,30 @@ export function startServer(options?: LSOptions) {
         // Order of plugin registration matters for FirstNonNull, which affects for example hover info
         pluginHost.register((sveltePlugin = new SveltePlugin(configManager)));
         pluginHost.register(new HTMLPlugin(docManager, configManager));
-        pluginHost.register(new CSSPlugin(docManager, configManager));
+
+        const cssLanguageServices = createLanguageServices({
+            clientCapabilities: evt.capabilities,
+            fileSystemProvider: new FileSystemProvider()
+        });
+        const workspaceFolders = evt.workspaceFolders ?? [{ name: '', uri: evt.rootUri ?? '' }];
+        pluginHost.register(
+            new CSSPlugin(docManager, configManager, workspaceFolders, cssLanguageServices)
+        );
         pluginHost.register(
             new TypeScriptPlugin(
                 configManager,
-                new LSAndTSDocResolver(
-                    docManager,
-                    workspaceUris.map(normalizeUri),
-                    configManager,
-                    notifyTsServiceExceedSizeLimit
-                )
+                new LSAndTSDocResolver(docManager, workspaceUris.map(normalizeUri), configManager, {
+                    notifyExceedSizeLimit: notifyTsServiceExceedSizeLimit,
+                    onProjectReloaded: updateAllDiagnostics,
+                    watchTsConfig: true
+                })
             )
         );
 
         const clientSupportApplyEditCommand = !!evt.capabilities.workspace?.applyEdit;
+        const clientCodeActionCapabilities = evt.capabilities.textDocument?.codeAction;
+        const clientSupportedCodeActionKinds =
+            clientCodeActionCapabilities?.codeActionLiteralSupport?.codeActionKind.valueSet;
 
         return {
             capabilities: {
@@ -207,15 +219,19 @@ export function startServer(options?: LSOptions) {
                 colorProvider: true,
                 documentSymbolProvider: true,
                 definitionProvider: true,
-                codeActionProvider: evt.capabilities.textDocument?.codeAction
-                    ?.codeActionLiteralSupport
+                codeActionProvider: clientCodeActionCapabilities?.codeActionLiteralSupport
                     ? {
                           codeActionKinds: [
                               CodeActionKind.QuickFix,
                               CodeActionKind.SourceOrganizeImports,
                               SORT_IMPORT_CODE_ACTION_KIND,
                               ...(clientSupportApplyEditCommand ? [CodeActionKind.Refactor] : [])
-                          ]
+                          ].filter(
+                              clientSupportedCodeActionKinds &&
+                                  evt.initializationOptions?.shouldFilterCodeActionKind
+                                  ? (kind) => clientSupportedCodeActionKinds.includes(kind)
+                                  : () => true
+                          )
                       }
                     : true,
                 executeCommandProvider: clientSupportApplyEditCommand
@@ -418,6 +434,14 @@ export function startServer(options?: LSOptions) {
     connection.onRequest('$/getEditsForFileRename', async (fileRename: RenameFile) =>
         pluginHost.updateImports(fileRename)
     );
+
+    connection.onRequest('$/getFileReferences', async (uri: string) => {
+        return pluginHost.fileReferences(uri);
+    });
+
+    connection.onRequest('$/getComponentReferences', async (uri: string) => {
+        return pluginHost.findComponentReferences(uri);
+    });
 
     connection.onRequest('$/getCompiledCode', async (uri: DocumentUri) => {
         const doc = docManager.get(uri);

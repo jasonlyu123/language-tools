@@ -29,6 +29,8 @@ import CompiledCodeContentProvider from './CompiledCodeContentProvider';
 import { activateTagClosing } from './html/autoClose';
 import { EMPTY_ELEMENTS } from './html/htmlEmptyTagsShared';
 import { TsPlugin } from './tsplugin';
+import { addFindComponentReferencesListener } from './typescript/findComponentReferences';
+import { addFindFileReferencesListener } from './typescript/findFileReferences';
 
 namespace TagCloseRequest {
     export const type: RequestType<TextDocumentPositionParams, string, any> = new RequestType(
@@ -185,8 +187,8 @@ export function activateSvelteLanguageServer(context: ExtensionContext) {
         const parts = doc.uri.toString(true).split(/\/|\\/);
         if (
             [
-                /^tsconfig\.json$/,
-                /^jsconfig\.json$/,
+                // /^tsconfig\.json$/,
+                // /^jsconfig\.json$/,
                 /^svelte\.config\.(js|cjs|mjs)$/,
                 // https://prettier.io/docs/en/configuration.html
                 /^\.prettierrc$/,
@@ -227,6 +229,9 @@ export function activateSvelteLanguageServer(context: ExtensionContext) {
     }
 
     addDidChangeTextDocumentListener(getLS);
+
+    addFindFileReferencesListener(getLS, context);
+    addFindComponentReferencesListener(getLS, context);
 
     addRenameFileListener(getLS);
 
