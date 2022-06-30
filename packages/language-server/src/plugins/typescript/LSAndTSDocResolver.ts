@@ -27,6 +27,7 @@ interface LSAndTSDocResolverOptions {
 
     onProjectReloaded?: () => void;
     watchTsConfig?: boolean;
+    tsSys?: ts.System
 }
 
 export class LSAndTSDocResolver {
@@ -36,7 +37,7 @@ export class LSAndTSDocResolver {
         private readonly configManager: LSConfigManager,
         private readonly options?: LSAndTSDocResolverOptions
     ) {
-        this.globalSnapshotsManager = new GlobalSnapshotsManager();
+        this.globalSnapshotsManager = new GlobalSnapshotsManager(options?.tsSys);
 
         const handleDocumentChange = (document: Document) => {
             // This refreshes the document in the ts language service
@@ -71,7 +72,7 @@ export class LSAndTSDocResolver {
         return document;
     };
 
-    private globalSnapshotsManager = new GlobalSnapshotsManager();
+    private globalSnapshotsManager: GlobalSnapshotsManager;
     private extendedConfigCache = new Map<string, ts.ExtendedConfigCacheEntry>();
 
     private get lsDocumentContext(): LanguageServiceDocumentContext {
@@ -85,7 +86,7 @@ export class LSAndTSDocResolver {
             extendedConfigCache: this.extendedConfigCache,
             onProjectReloaded: this.options?.onProjectReloaded,
             watchTsConfig: !!this.options?.watchTsConfig,
-            tsSystem: ts.sys
+            tsSystem: this.options?.tsSys ?? ts.sys
         };
     }
 
