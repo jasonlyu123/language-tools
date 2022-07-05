@@ -33,9 +33,7 @@
             "request": "launch",
             "name": "Run tests with debugger",
             "runtimeExecutable": "yarn",
-            "args": [
-                "test:dev"
-            ],
+            "args": ["test:dev"],
             "console": "integratedTerminal",
             "internalConsoleOptions": "neverOpen"
         },
