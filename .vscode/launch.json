@@ -32,16 +32,10 @@
             "type": "node",
             "request": "launch",
             "name": "Run tests with debugger",
-            "program": "${workspaceFolder}/node_modules/mocha/bin/_mocha",
+            "runtimeExecutable": "yarn",
             "args": [
-                "-r",
-                "ts-node/register",
-                "--colors",
-                "${workspaceFolder}/packages/*/test/**/*.ts"
+                "test:dev"
             ],
-            "env": {
-                "TS_NODE_COMPILER_OPTIONS": "{\"esModuleInterop\":true}"
-            },
             "console": "integratedTerminal",
             "internalConsoleOptions": "neverOpen"
         },
