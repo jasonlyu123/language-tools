@@ -454,14 +454,6 @@ export class TypeScriptPlugin
                 continue;
             }
 
-            // client files should be handled by the docManager
-            if (
-                fileName.endsWith('.svelte') &&
-                this.lsAndTsDocResolver.isOpenedInClient(fileName)
-            ) {
-                continue;
-            }
-
             if (changeType === FileChangeType.Created) {
                 if (!doneUpdateProjectFiles) {
                     doneUpdateProjectFiles = true;
@@ -476,7 +468,7 @@ export class TypeScriptPlugin
                 return;
             }
 
-            await this.lsAndTsDocResolver.updateExistingFile(fileName);
+            await this.lsAndTsDocResolver.updateExistingFileFromFs(fileName);
         }
     }
 

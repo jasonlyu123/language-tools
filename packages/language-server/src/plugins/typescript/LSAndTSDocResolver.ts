@@ -27,7 +27,7 @@ interface LSAndTSDocResolverOptions {
 
     onProjectReloaded?: () => void;
     watchTsConfig?: boolean;
-    tsSys?: ts.System
+    tsSys?: ts.System;
 }
 
 export class LSAndTSDocResolver {
@@ -134,8 +134,14 @@ export class LSAndTSDocResolver {
      * Deletes snapshot in all existing ts services
      */
     async deleteSnapshot(filePath: string) {
+        const url = pathToUrl(filePath);
+        // might be still opened in the client
+        if (this.docManager.isOpenedInClient(url)) {
+            return;
+        }
+
         await forAllServices((service) => service.deleteSnapshot(filePath));
-        this.docManager.releaseDocument(pathToUrl(filePath));
+        this.docManager.releaseDocument(url);
     }
 
     /**
@@ -182,7 +188,7 @@ export class LSAndTSDocResolver {
         return getService(filePath, this.workspaceUris, this.lsDocumentContext);
     }
 
-    async updateExistingFile(fileName: string) {
+    async updateExistingFileFromFs(fileName: string) {
         const updater = fileName.endsWith('.svelte')
             ? this.updateExistingSvelteFile
             : this.updateExistingTsOrJsFile;
@@ -196,11 +202,13 @@ export class LSAndTSDocResolver {
         }
     }
 
-    isOpenedInClient(path: string) {
-        return this.docManager.isOpenedInClient(pathToUrl(path));
-    }
-
     private async updateExistingSvelteFile(path: string) {
+        // should be handled by document manager
+        // there might be unsaved edit
+        if (this.docManager.isOpenedInClient(pathToUrl(path))) {
+            return;
+        }
+
         path = normalizePath(path);
         let didUpdate = false;
         await forAllServices((service) => {
