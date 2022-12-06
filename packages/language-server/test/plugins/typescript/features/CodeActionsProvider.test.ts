@@ -320,6 +320,180 @@ function test(useNewTransformation: boolean) {
             ]);
         }
 
+        const expectedParamsArgEmpty = useNewTransformation ? '' : 'arg1: {}';
+        const missingTransitionFunctionPositions = [
+            ['transition', Position.create(4, 16), expectedParamsArgEmpty],
+            ['in', Position.create(5, 8), expectedParamsArgEmpty],
+            ['out', Position.create(6, 9), expectedParamsArgEmpty],
+            ['transition', Position.create(8, 16), 'arg1: { p: number; }']
+        ] as const;
+
+        for (const [directive, start, expectedParamsArg] of missingTransitionFunctionPositions) {
+            it(`provides quickfix for missing transition function (${directive}:transitionFunction ${
+                expectedParamsArg ? 'with params' : ''
+            })`, async () => {
+                const { provider, document } = setup('fix-missing-function-transition.svelte');
+                const end = Position.create(start.line, start.character + 'custom'.length);
+
+                const codeActions = await provider.getCodeActions(
+                    document,
+                    Range.create(start, end),
+                    {
+                        diagnostics: [
+                            {
+                                code: 2304,
+                                message: "Cannot find name 'custom'.",
+                                range: Range.create(start, end),
+                                source: 'ts'
+                            }
+                        ],
+                        only: [CodeActionKind.QuickFix]
+                    }
+                );
+
+                testFixMissingTransitionFunctionQuickFix(codeActions, expectedParamsArg);
+            });
+        }
+
+        function testFixMissingTransitionFunctionQuickFix(
+            codeActions: CodeAction[],
+            expectedParamsArg: string
+        ) {
+            (<TextDocumentEdit>codeActions[0]?.edit?.documentChanges?.[0])?.edits.forEach(
+                (edit) => (edit.newText = harmonizeNewLines(edit.newText))
+            );
+
+            assert.deepStrictEqual(codeActions, [
+                {
+                    edit: {
+                        documentChanges: [
+                            {
+                                edits: [
+                                    {
+                                        newText:
+                                            `\n\n${indent}function custom(arg0: HTMLDivElement${
+                                                expectedParamsArg ? ', ' + expectedParamsArg : ''
+                                            }): import("svelte/transition").TransitionConfig {\n` +
+                                            `${indent}${indent}throw new Error("Function not implemented.");\n` +
+                                            `${indent}}\n`,
+                                        range: {
+                                            start: {
+                                                character: 0,
+                                                line: 2
+                                            },
+                                            end: {
+                                                character: 0,
+                                                line: 2
+                                            }
+                                        }
+                                    }
+                                ],
+                                textDocument: {
+                                    uri: getUri('fix-missing-function-transition.svelte'),
+                                    version: null
+                                }
+                            }
+                        ]
+                    },
+                    kind: CodeActionKind.QuickFix,
+                    title: "Add missing function declaration 'custom'"
+                }
+            ]);
+        }
+
+        it('provides quickfix for missing function for animate directive', async () => {
+            const { provider, document } = setup('fix-missing-function-animation.svelte');
+
+            const codeActions = await provider.getCodeActions(
+                document,
+                Range.create(Position.create(5, 13), Position.create(5, 19)),
+                {
+                    diagnostics: [
+                        {
+                            code: 2304,
+                            message: "Cannot find name 'custom'.",
+                            range: Range.create(Position.create(5, 13), Position.create(5, 19)),
+                            source: 'ts'
+                        }
+                    ],
+                    only: [CodeActionKind.QuickFix]
+                }
+            );
+
+            testFixMissingAnimateFunctionQuickFix(
+                codeActions,
+                useNewTransformation ? '' : 'arg2: {}'
+            );
+        });
+
+        it('provides quickfix for missing function for animate directive with params', async () => {
+            const { provider, document } = setup('fix-missing-function-animation.svelte');
+
+            const codeActions = await provider.getCodeActions(
+                document,
+                Range.create(Position.create(9, 13), Position.create(9, 19)),
+                {
+                    diagnostics: [
+                        {
+                            code: 2304,
+                            message: "Cannot find name 'custom'.",
+                            range: Range.create(Position.create(9, 13), Position.create(9, 19)),
+                            source: 'ts'
+                        }
+                    ],
+                    only: [CodeActionKind.QuickFix]
+                }
+            );
+
+            testFixMissingAnimateFunctionQuickFix(codeActions, 'arg2: { p: number; }');
+        });
+
+        function testFixMissingAnimateFunctionQuickFix(
+            codeActions: CodeAction[],
+            expectedParamsArg: string
+        ) {
+            (<TextDocumentEdit>codeActions[0]?.edit?.documentChanges?.[0])?.edits.forEach(
+                (edit) => (edit.newText = harmonizeNewLines(edit.newText))
+            );
+
+            assert.deepStrictEqual(codeActions, [
+                {
+                    edit: {
+                        documentChanges: [
+                            {
+                                edits: [
+                                    {
+                                        newText:
+                                            `\n\n${indent}function custom(arg0: HTMLLIElement, position: { from: DOMRect; to: DOMRect; }${
+                                                expectedParamsArg ? ', ' + expectedParamsArg : ''
+                                            }): import("svelte/animate").AnimationConfig {\n` +
+                                            `${indent}${indent}throw new Error("Function not implemented.");\n` +
+                                            `${indent}}\n`,
+                                        range: {
+                                            start: {
+                                                character: 0,
+                                                line: 2
+                                            },
+                                            end: {
+                                                character: 0,
+                                                line: 2
+                                            }
+                                        }
+                                    }
+                                ],
+                                textDocument: {
+                                    uri: getUri('fix-missing-function-animation.svelte'),
+                                    version: null
+                                }
+                            }
+                        ]
+                    },
+                    kind: CodeActionKind.QuickFix,
+                    title: "Add missing function declaration 'custom'"
+                }
+            ]);
+        }
+
         it('provides quickfix for ts-checked-js', async () => {
             const { provider, document } = setup('codeaction-checkJs.svelte');
             const errorRange = Range.create(Position.create(2, 21), Position.create(2, 26));

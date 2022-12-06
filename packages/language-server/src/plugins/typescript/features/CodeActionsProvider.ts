@@ -366,6 +366,18 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
                                         formatCodeBasis.baseIndent +
                                         edit.newText.trimLeft();
                                 }
+
+                                if (
+                                    edit.newText.includes('SvelteAnimationReturnType') ||
+                                    edit.newText.includes('SvelteTransitionReturnType')
+                                ) {
+                                    edit.newText = this.fixDirectiveFunctionQuickFix(
+                                        edit,
+                                        lang,
+                                        change.fileName,
+                                        userPreferences
+                                    );
+                                }
                             }
 
                             if (fix.fixName === 'disableJsDiagnostics') {
@@ -630,6 +642,39 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
         }
 
         return result;
+    }
+
+    private fixDirectiveFunctionQuickFix(
+        edit: ts.TextChange,
+        lang: ts.LanguageService,
+        fileName: string,
+        preferences: ts.UserPreferences
+    ): string {
+        const sourceFile = lang.getProgram()?.getSourceFile(fileName);
+        if (!sourceFile) {
+            return edit.newText;
+        }
+
+        const quote = getQuotePreference(sourceFile, preferences);
+        const useNewTransformation = this.configManager.getConfig().svelte.useNewTransformation;
+        const prefix = useNewTransformation ? '__sveltets_2_' : '';
+
+        if (edit.newText.includes('SvelteAnimationReturnType')) {
+            const returnType = `import(${quote}svelte/animate${quote}).AnimationConfig`;
+            return edit.newText
+                .replace(`${prefix}SvelteAnimationReturnType`, returnType)
+                .replace(
+                    `__sveltets_${useNewTransformation ? '2' : '1'}_AnimationMove`,
+                    'position'
+                );
+        }
+
+        if (edit.newText.includes('SvelteTransitionReturnType')) {
+            const returnType = `import(${quote}svelte/transition${quote}).TransitionConfig`;
+            return edit.newText.replace(`${prefix}SvelteTransitionReturnType`, returnType);
+        }
+
+        return edit.newText;
     }
 
     private async getApplicableRefactors(
