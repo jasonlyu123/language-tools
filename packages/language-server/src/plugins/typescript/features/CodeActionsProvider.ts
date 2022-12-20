@@ -592,18 +592,18 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
             document,
             tsDoc.scriptKind
         );
-        const completion = lang.getCompletionsAtPosition(
-            tsDoc.filePath,
-            0,
-            userPreferences,
-            formatCodeSettings
-        );
 
-        if (!completion) {
+        const navigateToItems = lang
+            .getNavigateToItems(storeIdentifier, 50)
+            .filter(
+                (item) => item.kindModifiers.includes('export') && item.name === storeIdentifier
+            );
+
+        if (!navigateToItems) {
             return [];
         }
 
-        const toFix = (c: ts.CompletionEntry) =>
+        const toFix = (c: { name: string; source: string }) =>
             lang
                 .getCompletionEntryDetails(
                     tsDoc.filePath,
@@ -612,7 +612,7 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
                     formatCodeSettings,
                     c.source,
                     userPreferences,
-                    c.data
+                    undefined
                 )
                 ?.codeActions?.map((a) => ({
                     ...a,
@@ -631,7 +631,19 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
                     fixName: 'import'
                 })) ?? [];
 
-        return flatten(completion.entries.filter((c) => c.name === storeIdentifier).map(toFix));
+        return flatten(
+            navigateToItems
+                .filter((c) => c.name === storeIdentifier)
+                .map((item) => ({
+                    kind: item.kind,
+                    name: item.name,
+                    source:
+                        item.containerKind === ts.ScriptElementKind.moduleElement
+                            ? item.containerName
+                            : item.fileName.slice(0, item.fileName.lastIndexOf('.'))
+                }))
+                .map(toFix)
+        );
     }
 
     /**
