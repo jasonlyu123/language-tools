@@ -202,11 +202,18 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionEn
             },
             formatSettings
         );
+
         const addCommitCharacters =
             // replicating VS Code behavior https://github.com/microsoft/vscode/blob/main/extensions/typescript-language-features/src/languageFeatures/completions.ts
             response?.isNewIdentifierLocation !== true &&
             (!tsDoc.parserError || isInScript(position, tsDoc));
         let completions = response?.entries || [];
+
+        if (response?.isNewIdentifierLocation) {
+            completions = completions.concat(
+                this.getCompletionListForStoreImport(lang, tsDoc.filePath, userPreferences, offset)
+            );
+        }
 
         if (!completions.length) {
             completions =
@@ -773,6 +780,75 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionEn
         }
 
         return TextEdit.replace(range, change.newText);
+    }
+
+    private getCompletionListForStoreImport(
+        lang: ts.LanguageService,
+        fileName: string,
+        userPreferences: ts.UserPreferences,
+        offset: number
+    ) {
+        const program = lang.getProgram();
+        const sourceFile = lang.getProgram()?.getSourceFile(fileName);
+        if (!program || !sourceFile) {
+            return [];
+        }
+        const identifier = findContainingNode(
+            sourceFile,
+            { start: offset, length: 0 },
+            ts.isIdentifier
+        );
+
+        if (identifier && identifier.text.startsWith('$')) {
+            console.log(program.getTypeChecker().getSymbolsInScope(identifier, ts.SymbolFlags.Value))
+            return this.getCompletionListForStoreImportForIdentifier(
+                lang,
+                identifier,
+                /** matchPrefix*/ true
+            );
+        }
+
+        return [];
+    }
+
+    getCompletionListForStoreImportForIdentifier(
+        lang: ts.LanguageService,
+        $storeIdentifier: ts.Identifier,
+        matchPrefix: boolean
+    ): ts.CompletionEntry[] {
+        const validScriptElement = [
+            ts.ScriptElementKind.classElement,
+            ts.ScriptElementKind.letElement,
+            ts.ScriptElementKind.constElement,
+            ts.ScriptElementKind.variableElement
+        ];
+
+        const storeName = $storeIdentifier.text.substring(1);
+        const navigateToItems = lang.getNavigateToItems(storeName, 1000).filter((item) => {
+            return (
+                validScriptElement.includes(item.kind) &&
+                ((matchPrefix && !this.isSvelteComponentImport(item.name)) ||
+                    item.name === storeName) &&
+                item.kindModifiers.includes('export')
+            );
+        });
+
+        const omitExtensionRegex = new RegExp(
+            Object.values(ts.Extension)
+                .filter((ext) => ext != ts.Extension.TsBuildInfo)
+                .map((ext) => ext.replace(/\./g, '\\.') + '$')
+                .join('|')
+        );
+
+        return navigateToItems.map((item) => ({
+            kind: item.kind,
+            name: item.name,
+            source:
+                item.containerKind === ts.ScriptElementKind.moduleElement
+                    ? item.containerName
+                    : item.fileName.replace(omitExtensionRegex, ''),
+            sortText: ''
+        }));
     }
 
     private mapRangeForNewImport(snapshot: SvelteDocumentSnapshot, virtualRange: Range) {

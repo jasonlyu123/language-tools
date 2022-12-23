@@ -304,6 +304,7 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
                         cannotFoundNameDiagnostic,
                         tsDoc,
                         formatCodeBasis,
+                        formatCodeSettings,
                         userPreferences
                     )
                 );
@@ -519,6 +520,7 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
         diagnostics: Diagnostic[],
         tsDoc: DocumentSnapshot,
         formatCodeBasis: FormatCodeBasis,
+        formatCodeSettings: ts.FormatCodeSettings,
         userPreferences: ts.UserPreferences
     ): Promise<ts.CodeFixAction[]> {
         const program = lang.getProgram();
@@ -554,13 +556,15 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
 
             if (isQuickFixTargetTargetStore) {
                 results.push(
-                    ...(await this.getSvelteStoreQuickFixes(
+                    ...this.getSvelteStoreQuickFixes(
                         identifier,
                         lang,
                         document,
                         tsDoc,
-                        userPreferences
-                    ))
+                        userPreferences,
+                        formatCodeSettings,
+                        typeChecker
+                    )
                 );
             }
 
@@ -580,30 +584,26 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
         return results;
     }
 
-    private async getSvelteStoreQuickFixes(
+    private getSvelteStoreQuickFixes(
         identifier: ts.Identifier,
         lang: ts.LanguageService,
         document: Document,
         tsDoc: DocumentSnapshot,
-        userPreferences: ts.UserPreferences
-    ): Promise<ts.CodeFixAction[]> {
-        const storeIdentifier = identifier.escapedText.toString().substring(1);
-        const formatCodeSettings = await this.configManager.getFormatCodeSettingsForFile(
-            document,
-            tsDoc.scriptKind
+        userPreferences: ts.UserPreferences,
+        formatCodeSettings: ts.FormatCodeSettings,
+        typeChecker: ts.TypeChecker
+    ): ts.CodeFixAction[] {
+        const completions = this.completionProvider.getCompletionListForStoreImportForIdentifier(
+            lang,
+            identifier,
+            /** matchPrefix */ false
         );
 
-        const navigateToItems = lang
-            .getNavigateToItems(storeIdentifier, 50)
-            .filter(
-                (item) => item.kindModifiers.includes('export') && item.name === storeIdentifier
-            );
-
-        if (!navigateToItems) {
+        if (!completions) {
             return [];
         }
 
-        const toFix = (c: { name: string; source: string }) =>
+        const toFix = (c: Pick<ts.CompletionEntry, 'name' | 'source'>) =>
             lang
                 .getCompletionEntryDetails(
                     tsDoc.filePath,
@@ -631,19 +631,7 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
                     fixName: 'import'
                 })) ?? [];
 
-        return flatten(
-            navigateToItems
-                .filter((c) => c.name === storeIdentifier)
-                .map((item) => ({
-                    kind: item.kind,
-                    name: item.name,
-                    source:
-                        item.containerKind === ts.ScriptElementKind.moduleElement
-                            ? item.containerName
-                            : item.fileName.slice(0, item.fileName.lastIndexOf('.'))
-                }))
-                .map(toFix)
-        );
+        return flatten(completions.map(toFix));
     }
 
     /**
