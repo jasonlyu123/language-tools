@@ -48,6 +48,7 @@
     },
     "dependencies": {
         "@jridgewell/trace-mapping": "^0.3.17",
+        "@volar/typescript-faster": "^1.0.18",
         "@vscode/emmet-helper": "^2.8.4",
         "chokidar": "^3.4.1",
         "estree-walker": "^2.0.1",

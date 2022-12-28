@@ -198,7 +198,8 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionEn
             offset,
             {
                 ...userPreferences,
-                triggerCharacter: validTriggerCharacter
+                triggerCharacter: validTriggerCharacter,
+                triggerKind
             },
             formatSettings
         );
@@ -320,7 +321,7 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionEn
             }
         }
 
-        const completionList = CompletionList.create(completionItems, !!tsDoc.parserError);
+        const completionList = CompletionList.create(completionItems, !!tsDoc.parserError || !!response?.isIncomplete);
         this.lastCompletion = { key: document.getFilePath() || '', position, completionList };
 
         return completionList;

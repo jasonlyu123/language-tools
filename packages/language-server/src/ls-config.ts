@@ -401,7 +401,8 @@ export class LSConfigManager {
             includeAutomaticOptionalChainCompletions:
                 config.suggest?.includeAutomaticOptionalChainCompletions ?? true,
             includeCompletionsWithInsertText: true,
-            useLabelDetailsInCompletionEntries: true
+            useLabelDetailsInCompletionEntries: true,
+            allowIncompleteCompletions: true
         };
     }
 

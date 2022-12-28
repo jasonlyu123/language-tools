@@ -1,4 +1,5 @@
-import { dirname, resolve } from 'path';
+import { decorate } from '@volar/typescript-faster';
+import { basename, dirname, resolve } from 'path';
 import ts from 'typescript';
 import { TextDocumentContentChangeEvent } from 'vscode-languageserver-protocol';
 import { getPackageInfo } from '../../importPackage';
@@ -190,6 +191,19 @@ async function createLanguageService(
 
     let languageServiceReducedMode = false;
     let projectVersion = 0;
+    let lastIncompleteCompletions: ts.CompletionInfo | undefined;
+
+    const incompleteCompletionsCache = {
+        get() {
+            return lastIncompleteCompletions;
+        },
+        set(cache: ts.CompletionInfo) {
+            lastIncompleteCompletions = cache;
+        },
+        clear() {
+            lastIncompleteCompletions = undefined;
+        }
+    };
 
     const getCanonicalFileName = createGetCanonicalFileName(tsSystem.useCaseSensitiveFileNames);
 
@@ -209,10 +223,17 @@ async function createLanguageService(
         useCaseSensitiveFileNames: () => tsSystem.useCaseSensitiveFileNames,
         getScriptKind: (fileName: string) => getSnapshot(fileName).scriptKind,
         getProjectVersion: () => projectVersion.toString(),
-        getNewLine: () => tsSystem.newLine
+        getNewLine: () => tsSystem.newLine,
+        // @ts-expect-error internal
+        getIncompleteCompletionsCache() {
+            return incompleteCompletionsCache;
+        }
     };
 
     let languageService = ts.createLanguageService(host);
+
+    decorate(ts as typeof import('typescript/lib/tsserverlibrary'), host, languageService);
+
     const transformationConfig: SvelteSnapshotOptions = {
         transformOnTemplateError: docContext.transformOnTemplateError,
         useNewTransformation: docContext.useNewTransformation,
@@ -248,9 +269,12 @@ async function createLanguageService(
     }
 
     function updateSnapshot(documentOrFilePath: Document | string): DocumentSnapshot {
-        return typeof documentOrFilePath === 'string'
-            ? updateSnapshotFromFilePath(documentOrFilePath)
-            : updateSnapshotFromDocument(documentOrFilePath);
+        const snapshot =
+            typeof documentOrFilePath === 'string'
+                ? updateSnapshotFromFilePath(documentOrFilePath)
+                : updateSnapshotFromDocument(documentOrFilePath);
+
+        return snapshot;
     }
 
     function updateSnapshotFromDocument(document: Document): DocumentSnapshot {
@@ -269,8 +293,15 @@ async function createLanguageService(
         snapshotManager.set(filePath, newSnapshot);
         if (prevSnapshot && prevSnapshot.scriptKind !== newSnapshot.scriptKind) {
             // Restart language service as it doesn't handle script kind changes.
-            languageService.dispose();
-            languageService = ts.createLanguageService(host);
+            // languageService.dispose();
+            // languageService = ts.createLanguageService(host);
+        }
+
+        const newProgram = languageService.getProgram();
+
+        // @ts-expect-error internal
+        if (newProgram && !newProgram.structureIsReused) {
+            clearCache();
         }
 
         return newSnapshot;
@@ -290,6 +321,7 @@ async function createLanguageService(
             tsSystem
         );
         snapshotManager.set(filePath, newSnapshot);
+        clearCache();
         return newSnapshot;
     }
 
@@ -308,6 +340,9 @@ async function createLanguageService(
             transformationConfig,
             tsSystem
         );
+        if (basename(fileName) !== 'package.json') {
+            clearCache();
+        }
         snapshotManager.set(fileName, doc);
         return doc;
     }
@@ -358,6 +393,7 @@ async function createLanguageService(
             svelteModuleLoader.deleteUnresolvedResolutionsFromCache(fileName);
         }
         snapshotManager.updateTsOrJsFile(fileName, changes);
+        clearCache();
     }
 
     function getParsedConfig() {
@@ -524,12 +560,14 @@ async function createLanguageService(
             )
         ) {
             languageService.cleanupSemanticCache();
+            clearCache();
             languageServiceReducedMode = true;
             docContext.notifyExceedSizeLimit?.();
         }
     }
 
     function dispose() {
+        clearCache();
         languageService.dispose();
         snapshotManager.dispose();
         configWatchers.get(tsconfigPath)?.close();
@@ -585,6 +623,18 @@ async function createLanguageService(
         }
 
         docContext.onProjectReloaded?.();
+    }
+
+    function clearCache() {
+        (host as any).getModuleSpecifierCache?.()?.clear();
+
+        const exportMapCache = (host as any).getCachedExportInfoMap?.();
+        if (!exportMapCache || exportMapCache.isEmpty()) {
+            return;
+        }
+
+        exportMapCache.releaseSymbols();
+        exportMapCache.clear();
     }
 }
 
