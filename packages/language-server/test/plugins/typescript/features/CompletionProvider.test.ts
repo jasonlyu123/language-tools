@@ -635,7 +635,7 @@ function test(useNewTransformation: boolean) {
 
             assert.strictEqual(
                 detail,
-                'Auto import from ../definitions\nfunction blubb(): boolean'
+                'Add import from "../definitions"\n\nfunction blubb(): boolean'
             );
 
             assert.strictEqual(
@@ -671,7 +671,7 @@ function test(useNewTransformation: boolean) {
 
             assert.strictEqual(
                 detail,
-                'Auto import from ../definitions\nfunction blubb(): boolean'
+                'Add import from "../definitions"\n\nfunction blubb(): boolean'
             );
 
             assert.strictEqual(
@@ -706,7 +706,7 @@ function test(useNewTransformation: boolean) {
 
             assert.strictEqual(
                 detail,
-                'Auto import from ../definitions\nfunction blubb(): boolean'
+                'Add import from "../definitions"\n\nfunction blubb(): boolean'
             );
 
             assert.strictEqual(
@@ -737,7 +737,7 @@ function test(useNewTransformation: boolean) {
 
             assert.strictEqual(
                 detail,
-                'Auto import from svelte\nfunction onMount(fn: () => any): void'
+                'Add import from "svelte"\n\nfunction onMount(fn: () => any): void'
             );
 
             assert.strictEqual(
@@ -842,7 +842,7 @@ function test(useNewTransformation: boolean) {
 
             assert.strictEqual(
                 detail,
-                'Auto import from ../imported-file.svelte\nclass ImportedFile'
+                'Add import from "../imported-file.svelte"\n\nclass ImportedFile'
             );
 
             assert.strictEqual(
@@ -880,7 +880,7 @@ function test(useNewTransformation: boolean) {
 
             assert.strictEqual(
                 detail,
-                'Auto import from ../imported-file.svelte\nclass ImportedFile'
+                'Add import from "../imported-file.svelte"\n\nclass ImportedFile'
             );
 
             assert.strictEqual(
@@ -1410,7 +1410,10 @@ function test(useNewTransformation: boolean) {
 
             const { detail } = await completionProvider.resolveCompletion(document, item!);
 
-            assert.strictEqual(detail, 'Auto import from random-package2\nfunction foo(): string');
+            assert.strictEqual(
+                detail,
+                'Add import from "random-package2"\n\nfunction foo(): string'
+            );
         });
 
         // Hacky, but it works. Needed due to testing both new and old transformation
