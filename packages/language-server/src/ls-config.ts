@@ -405,7 +405,8 @@ export class LSConfigManager {
             includeCompletionsWithClassMemberSnippets:
                 config.suggest?.classMemberSnippets?.enabled ?? true,
             includeCompletionsWithObjectLiteralMethodSnippets:
-                config.suggest?.objectLiteralMethodSnippets?.enabled ?? true
+                config.suggest?.objectLiteralMethodSnippets?.enabled ?? true,
+            useLabelDetailsInCompletionEntries: true
         };
     }
 

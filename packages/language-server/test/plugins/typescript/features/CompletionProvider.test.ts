@@ -88,7 +88,8 @@ function test(useNewTransformation: boolean) {
                 sortText: '11',
                 commitCharacters: ['.', ',', ';', '('],
                 preselect: undefined,
-                textEdit: undefined
+                textEdit: undefined,
+                labelDetails: undefined
             });
         });
 
@@ -115,7 +116,8 @@ function test(useNewTransformation: boolean) {
                 sortText: '11',
                 commitCharacters: ['.', ',', ';', '('],
                 preselect: undefined,
-                textEdit: undefined
+                textEdit: undefined,
+                labelDetails: undefined
             });
         });
 
@@ -1172,6 +1174,9 @@ function test(useNewTransformation: boolean) {
                 sortText: '11',
                 commitCharacters: undefined,
                 preselect: undefined,
+                labelDetails: {
+                    description: '../definitions'
+                },
                 textEdit: {
                     newText: '{ blubb$1 } from "../definitions";',
                     range: {
@@ -1231,6 +1236,7 @@ function test(useNewTransformation: boolean) {
                 sortText: '11',
                 commitCharacters: ['.', ',', ';', '('],
                 preselect: undefined,
+                labelDetails: undefined,
                 textEdit: {
                     newText: '.toString',
                     range: {
@@ -1272,6 +1278,7 @@ function test(useNewTransformation: boolean) {
                 preselect: undefined,
                 insertText: undefined,
                 insertTextFormat: undefined,
+                labelDetails: undefined,
                 commitCharacters: ['.', ',', ';', '('],
                 textEdit: {
                     newText: '@hi',

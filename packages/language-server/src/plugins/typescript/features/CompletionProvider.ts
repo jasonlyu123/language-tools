@@ -456,6 +456,14 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionEn
             ? TextEdit.replace(convertRange(snapshot, replacementSpan), insertText ?? label)
             : undefined;
 
+        const labelDetails =
+            comp.labelDetails ??
+            (comp.sourceDisplay
+                ? {
+                      description: ts.displayPartsToString(comp.sourceDisplay)
+                  }
+                : undefined);
+
         return {
             label,
             insertText,
@@ -465,6 +473,7 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionEn
             sortText: isSvelteComp ? '-1' : comp.sortText,
             preselect: isSvelteComp ? true : comp.isRecommended,
             insertTextFormat: comp.isSnippet ? InsertTextFormat.Snippet : undefined,
+            labelDetails,
             textEdit,
             // pass essential data for resolving completion
             data: {
@@ -628,6 +637,15 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionEn
         if (detail) {
             const { detail: itemDetail, documentation: itemDocumentation } =
                 this.getCompletionDocument(detail, is$typeImport);
+
+            // VSCode + tsserver won't have this pop-in effect
+            // because it's resolved during the incomplete trigger
+            // which requires typescript internal api IncompleteCompletionsCache
+            if (detail.sourceDisplay && !completionItem.labelDetails) {
+                completionItem.labelDetails = {
+                    description: ts.displayPartsToString(detail.sourceDisplay)
+                };
+            }
 
             completionItem.detail = itemDetail;
             completionItem.documentation = itemDocumentation;
