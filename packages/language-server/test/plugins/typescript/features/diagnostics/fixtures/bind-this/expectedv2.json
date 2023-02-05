@@ -63,7 +63,29 @@
         "source": "ts",
         "message": "Property 'prop' is missing in type '{}' but required in type '{ prop: boolean; }'.",
         "code": 2741,
-        "tags": []
+        "tags": [],
+        "relatedInformation": [
+            {
+                "location": {
+                    "range": {
+                        "start": { "line": 2, "character": 48 },
+                        "end": { "line": 2, "character": 52 }
+                    },
+                    "uri": "file://___root___/packages/language-server/test/plugins/typescript/features/diagnostics/fixtures/bind-this/input.svelte"
+                },
+                "message": "'prop' is declared here."
+            },
+            {
+                "location": {
+                    "range": {
+                        "start": { "line": 30, "character": 4 },
+                        "end": { "line": 30, "character": 9 }
+                    },
+                    "uri": "file://___root___/node_modules/svelte/types/runtime/internal/dev.d.ts"
+                },
+                "message": "The expected type comes from property 'props' which is declared here on type 'ComponentConstructorOptions<{ prop: boolean; }>'"
+            }
+        ]
     },
     {
         "range": {
@@ -96,6 +118,28 @@
         "source": "ts",
         "message": "Property 'prop' is missing in type '{}' but required in type '{ prop: boolean; }'.",
         "code": 2741,
-        "tags": []
+        "tags": [],
+        "relatedInformation": [
+            {
+                "location": {
+                    "range": {
+                        "start": { "line": 2, "character": 48 },
+                        "end": { "line": 2, "character": 52 }
+                    },
+                    "uri": "file://___root___/packages/language-server/test/plugins/typescript/features/diagnostics/fixtures/bind-this/input.svelte"
+                },
+                "message": "'prop' is declared here."
+            },
+            {
+                "location": {
+                    "range": {
+                        "start": { "line": 30, "character": 4 },
+                        "end": { "line": 30, "character": 9 }
+                    },
+                    "uri": "file://___root___/node_modules/svelte/types/runtime/internal/dev.d.ts"
+                },
+                "message": "The expected type comes from property 'props' which is declared here on type 'ComponentConstructorOptions<{ prop: boolean; }>'"
+            }
+        ]
     }
 ]

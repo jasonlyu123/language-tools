@@ -8,7 +8,19 @@
         "source": "ts",
         "message": "Type 'number' is not assignable to type 'string'.",
         "code": 2322,
-        "tags": []
+        "tags": [],
+        "relatedInformation": [
+            {
+                "location": {
+                    "range": {
+                        "start": { "line": 6, "character": 16 },
+                        "end": { "line": 6, "character": 29 }
+                    },
+                    "uri": "file://___root___/packages/language-server/test/plugins/typescript/features/diagnostics/fixtures/actions-enhance-types/input.svelte"
+                },
+                "message": "The expected type comes from property 'foo' which is declared here on type 'Omit<Omit<HTMLAttributes<HTMLDivElement>, \"data-sveltekit-noscroll\" | \"data-sveltekit-preload-code\" | \"data-sveltekit-preload-data\" | ... 50 more ... | \"on:ownclickfromold\"> & EventsWithColon<...>, keyof HTMLAttributes<...>> & HTMLAttributes<...> & { ...; }'"
+            }
+        ]
     },
     {
         "range": {
@@ -19,6 +31,18 @@
         "source": "ts",
         "message": "Type '(e: CustomEvent<string>) => void' is not assignable to type '(e: CustomEvent<boolean>) => void'.\n  Types of parameters 'e' and 'e' are incompatible.\n    Type 'CustomEvent<boolean>' is not assignable to type 'CustomEvent<string>'.\n      Type 'boolean' is not assignable to type 'string'.",
         "code": 2322,
-        "tags": []
+        "tags": [],
+        "relatedInformation": [
+            {
+                "location": {
+                    "range": {
+                        "start": { "line": 7, "character": 16 },
+                        "end": { "line": 7, "character": 59 }
+                    },
+                    "uri": "file://___root___/packages/language-server/test/plugins/typescript/features/diagnostics/fixtures/actions-enhance-types/input.svelte"
+                },
+                "message": "The expected type comes from property 'on:bar' which is declared here on type 'Omit<Omit<HTMLAttributes<HTMLDivElement>, \"data-sveltekit-noscroll\" | \"data-sveltekit-preload-code\" | \"data-sveltekit-preload-data\" | ... 50 more ... | \"on:ownclickfromold\"> & EventsWithColon<...>, keyof HTMLAttributes<...>> & HTMLAttributes<...> & { ...; }'"
+            }
+        ]
     }
 ]

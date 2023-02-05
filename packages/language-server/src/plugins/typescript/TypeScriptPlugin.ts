@@ -80,6 +80,7 @@ import {
     convertToLocationRange,
     getScriptKindFromFileName,
     isInScript,
+    isSvelte2tsxShim,
     symbolKindFromString
 } from './utils';
 
@@ -348,7 +349,7 @@ export class TypeScriptPlugin
 
         const result = await Promise.all(
             defs.definitions.map(async (def) => {
-                if (def.fileName.endsWith('svelte-shims.d.ts')) {
+                if (isSvelte2tsxShim(def.fileName)) {
                     return;
                 }
 

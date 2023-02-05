@@ -8,7 +8,19 @@
         "source": "ts",
         "message": "Argument of type '{}' is not assignable to parameter of type 'ArrayLike<unknown>'.\n  Property 'length' is missing in type '{}' but required in type 'ArrayLike<unknown>'.",
         "code": 2345,
-        "tags": []
+        "tags": [],
+        "relatedInformation": [
+            {
+                "location": {
+                    "range": {
+                        "start": { "line": 1554, "character": 13 },
+                        "end": { "line": 1554, "character": 19 }
+                    },
+                    "uri": "file://___root___/node_modules/typescript/lib/lib.es5.d.ts"
+                },
+                "message": "'length' is declared here."
+            }
+        ]
     },
     {
         "range": {

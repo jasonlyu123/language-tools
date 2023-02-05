@@ -1,5 +1,11 @@
 import ts from 'typescript';
-import { CancellationToken, Diagnostic, DiagnosticSeverity } from 'vscode-languageserver';
+import {
+    CancellationToken,
+    Diagnostic,
+    DiagnosticRelatedInformation,
+    DiagnosticSeverity,
+    Location
+} from 'vscode-languageserver';
 import {
     Document,
     getNodeIfIsInStartTag,
@@ -9,7 +15,14 @@ import {
 } from '../../../lib/documents';
 import { DiagnosticsProvider } from '../../interfaces';
 import { LSAndTSDocResolver } from '../LSAndTSDocResolver';
-import { convertRange, getDiagnosticTag, hasNonZeroRange, mapSeverity } from '../utils';
+import {
+    convertRange,
+    convertToLocationRange,
+    getDiagnosticTag,
+    hasNonZeroRange,
+    isSvelte2tsxShim,
+    mapSeverity
+} from '../utils';
 import { SvelteDocumentSnapshot } from '../DocumentSnapshot';
 import {
     isInGeneratedCode,
@@ -19,9 +32,18 @@ import {
     isInReactiveStatement,
     gatherIdentifiers,
     isStoreVariableIn$storeDeclaration,
-    get$storeOffsetOf$storeDeclaration
+    get$storeOffsetOf$storeDeclaration,
+    SnapshotMap
 } from './utils';
-import { not, flatten, passMap, regexIndexOf, swapRangeStartEndIfNecessary } from '../../../utils';
+import {
+    not,
+    flatten,
+    passMap,
+    regexIndexOf,
+    swapRangeStartEndIfNecessary,
+    pathToUrl,
+    isNotNullOrUndefined
+} from '../../../utils';
 import { LSConfigManager } from '../../../ls-config';
 import { isAttributeName, isEventHandler } from '../svelte-ast-utils';
 
@@ -118,16 +140,16 @@ export class DiagnosticsProviderImpl implements DiagnosticsProvider {
 
         diagnostics = diagnostics.filter(notGenerated).filter(not(isUnusedReactiveStatementLabel));
         diagnostics = resolveNoopsInReactiveStatements(lang, diagnostics);
+        const snapshots = new SnapshotMap(this.lsAndTsDocResolver);
+        snapshots.set(tsDoc.filePath, tsDoc);
 
-        return diagnostics
-            .map<Diagnostic>((diagnostic) => ({
-                range: convertRange(tsDoc, diagnostic),
-                severity: mapSeverity(diagnostic.category),
-                source: isTypescript ? 'ts' : 'js',
-                message: ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
-                code: diagnostic.code,
-                tags: getDiagnosticTag(diagnostic)
-            }))
+        return (
+            await Promise.all(
+                diagnostics.map((diagnostic) =>
+                    this.toDiagnostic(tsDoc, diagnostic, isTypescript, snapshots)
+                )
+            )
+        )
             .map(
                 mapRange(
                     tsDoc,
@@ -145,6 +167,60 @@ export class DiagnosticsProviderImpl implements DiagnosticsProvider {
             )
             .map(enhanceIfNecessary)
             .map(swapDiagRangeStartEndIfNecessary);
+    }
+    private async toDiagnostic(
+        tsDoc: SvelteDocumentSnapshot,
+        diagnostic: ts.Diagnostic,
+        isTypescript: boolean,
+        snapshots: SnapshotMap
+    ): Promise<Diagnostic> {
+        const result: Diagnostic = {
+            range: convertRange(tsDoc, diagnostic),
+            severity: mapSeverity(diagnostic.category),
+            source: isTypescript ? 'ts' : 'js',
+            message: ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
+            code: diagnostic.code,
+            tags: getDiagnosticTag(diagnostic)
+        };
+
+        if (!diagnostic.relatedInformation) {
+            return result;
+        }
+
+        result.relatedInformation = (
+            await Promise.all(
+                diagnostic.relatedInformation.map((info) =>
+                    this.convertRelatedInformation(info, snapshots)
+                )
+            )
+        ).filter(isNotNullOrUndefined);
+
+        return result;
+    }
+
+    private async convertRelatedInformation(
+        info: ts.DiagnosticRelatedInformation,
+        snapshots: SnapshotMap
+    ): Promise<DiagnosticRelatedInformation | undefined> {
+        if (!info.file || isSvelte2tsxShim(info.file.fileName)) {
+            return;
+        }
+
+        const snapshot = await snapshots.retrieve(info.file.fileName);
+        if (!snapshot) {
+            return;
+        }
+
+        return {
+            location: Location.create(
+                pathToUrl(info.file.fileName),
+                convertToLocationRange(snapshot, {
+                    start: info.start ?? 0,
+                    length: info.length ?? 0
+                })
+            ),
+            message: ts.flattenDiagnosticMessageText(info.messageText, ts.sys.newLine)
+        };
     }
 
     private async getLSAndTSDoc(document: Document) {

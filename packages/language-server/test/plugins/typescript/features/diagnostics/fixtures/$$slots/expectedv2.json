@@ -8,7 +8,19 @@
         "source": "ts",
         "message": "Type 'boolean' is not assignable to type 'string'.",
         "code": 2322,
-        "tags": []
+        "tags": [],
+        "relatedInformation": [
+            {
+                "location": {
+                    "range": {
+                        "start": { "line": 4, "character": 12 },
+                        "end": { "line": 4, "character": 31 }
+                    },
+                    "uri": "file://___root___/packages/language-server/test/plugins/typescript/features/diagnostics/fixtures/%24%24slots/input.svelte"
+                },
+                "message": "The expected type comes from property 'validPropWrongType1' which is declared here on type '{ valid1: boolean; validPropWrongType1: string; }'"
+            }
+        ]
     },
     {
         "range": {
@@ -30,7 +42,19 @@
         "source": "ts",
         "message": "Type 'boolean' is not assignable to type 'string'.",
         "code": 2322,
-        "tags": []
+        "tags": [],
+        "relatedInformation": [
+            {
+                "location": {
+                    "range": {
+                        "start": { "line": 8, "character": 12 },
+                        "end": { "line": 8, "character": 31 }
+                    },
+                    "uri": "file://___root___/packages/language-server/test/plugins/typescript/features/diagnostics/fixtures/%24%24slots/input.svelte"
+                },
+                "message": "The expected type comes from property 'validPropWrongType2' which is declared here on type '{ valid2: boolean; validPropWrongType2: string; }'"
+            }
+        ]
     },
     {
         "range": {

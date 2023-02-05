@@ -8,7 +8,19 @@
         "source": "ts",
         "message": "Type 'boolean' is not assignable to type 'string'.",
         "code": 2322,
-        "tags": []
+        "tags": [],
+        "relatedInformation": [
+            {
+                "location": {
+                    "range": {
+                        "start": { "line": 19, "character": 12 },
+                        "end": { "line": 19, "character": 21 }
+                    },
+                    "uri": "file://___root___/packages/language-server/test/plugins/typescript/features/diagnostics/fixtures/custom-types/svelte-ambient-typings.d.ts"
+                },
+                "message": "The expected type comes from property 'attribute' which is declared here on type '{ attribute?: string; }'"
+            }
+        ]
     },
     {
         "range": {
@@ -30,7 +42,19 @@
         "source": "ts",
         "message": "Type 'boolean' is not assignable to type 'string'.",
         "code": 2322,
-        "tags": []
+        "tags": [],
+        "relatedInformation": [
+            {
+                "location": {
+                    "range": {
+                        "start": { "line": 14, "character": 8 },
+                        "end": { "line": 14, "character": 15 }
+                    },
+                    "uri": "file://___root___/packages/language-server/test/plugins/typescript/features/diagnostics/fixtures/custom-types/svelte-ambient-typings.d.ts"
+                },
+                "message": "The expected type comes from property 'owntype' which is declared here on type 'HTMLProps<\"div\", HTMLAttributes<any>>'"
+            }
+        ]
     },
     {
         "range": {
@@ -74,7 +98,19 @@
         "source": "ts",
         "message": "Type 'boolean' is not assignable to type 'string'.",
         "code": 2322,
-        "tags": []
+        "tags": [],
+        "relatedInformation": [
+            {
+                "location": {
+                    "range": {
+                        "start": { "line": 7, "character": 12 },
+                        "end": { "line": 7, "character": 21 }
+                    },
+                    "uri": "file://___root___/packages/language-server/test/plugins/typescript/features/diagnostics/fixtures/custom-types/svelte-ambient-typings.d.ts"
+                },
+                "message": "The expected type comes from property 'attribute' which is declared here on type '{ attribute?: string; }'"
+            }
+        ]
     },
     {
         "range": {

@@ -324,3 +324,7 @@ export function hasTsExtensions(fileName: string) {
         fileName.endsWith(ts.Extension.Ts)
     );
 }
+
+export function isSvelte2tsxShim(filePath: string) {
+    return filePath.endsWith('svelte-shims.d.ts');
+}

@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import ts from 'typescript';
 import { Document, DocumentManager } from '../../../../../src/lib/documents';
 import { LSConfigManager } from '../../../../../src/ls-config';
@@ -8,6 +8,7 @@ import { LSAndTSDocResolver } from '../../../../../src/plugins';
 import { DiagnosticsProviderImpl } from '../../../../../src/plugins/typescript/features/DiagnosticsProvider';
 import { __resetCache } from '../../../../../src/plugins/typescript/service';
 import { pathToUrl } from '../../../../../src/utils';
+import { Diagnostic } from 'vscode-languageserver-types';
 
 function setup(workspaceDir: string, filePath: string, useNewTransformation: boolean) {
     const docManager = new DocumentManager(
@@ -29,6 +30,7 @@ function setup(workspaceDir: string, filePath: string, useNewTransformation: boo
 }
 
 function executeTests(dir: string, workspaceDir: string, useNewTransformation: boolean) {
+    const rootUri = pathToUrl(resolve(__dirname, '../../../../../../../'));
     const inputFile = join(dir, 'input.svelte');
     if (existsSync(inputFile)) {
         const _it = dir.endsWith('.only') ? it.only : it;
@@ -50,7 +52,7 @@ function executeTests(dir: string, workspaceDir: string, useNewTransformation: b
         return async () => {
             const expected = useNewTransformation ? 'expectedv2.json' : 'expected.json';
             const { plugin, document } = setup(workspaceDir, inputFile, useNewTransformation);
-            const diagnostics = await plugin.getDiagnostics(document);
+            const diagnostics = trimFilePath(await plugin.getDiagnostics(document));
 
             const expectedFile = join(dir, expected);
             if (existsSync(expectedFile)) {
@@ -73,6 +75,26 @@ function executeTests(dir: string, workspaceDir: string, useNewTransformation: b
             function writeFile(msg: string) {
                 console.info(msg, dir.substring(__dirname.length));
                 writeFileSync(expectedFile, JSON.stringify(diagnostics), 'utf-8');
+            }
+
+            function trimFilePath(diagnostics: Diagnostic[]) {
+                return diagnostics.map((diagnostic) => {
+                    const result = { ...diagnostic };
+
+                    if (!result.relatedInformation) {
+                        return result;
+                    }
+
+                    result.relatedInformation = result.relatedInformation.map((info) => ({
+                        ...info,
+                        location: {
+                            range: info.location.range,
+                            uri: info.location.uri.replace(rootUri, 'file://___root___')
+                        }
+                    }));
+
+                    return result;
+                });
             }
         };
     }

@@ -8,7 +8,19 @@
         "source": "ts",
         "message": "Property 'toFixed' does not exist on type 'string'. Did you mean 'fixed'?",
         "code": 2551,
-        "tags": []
+        "tags": [],
+        "relatedInformation": [
+            {
+                "location": {
+                    "range": {
+                        "start": { "line": 484, "character": 4 },
+                        "end": { "line": 484, "character": 20 }
+                    },
+                    "uri": "file://___root___/node_modules/typescript/lib/lib.es2015.core.d.ts"
+                },
+                "message": "'fixed' is declared here."
+            }
+        ]
     },
     {
         "range": {
@@ -19,7 +31,19 @@
         "source": "ts",
         "message": "Property 'toFixed' does not exist on type 'string'. Did you mean 'fixed'?",
         "code": 2551,
-        "tags": []
+        "tags": [],
+        "relatedInformation": [
+            {
+                "location": {
+                    "range": {
+                        "start": { "line": 484, "character": 4 },
+                        "end": { "line": 484, "character": 20 }
+                    },
+                    "uri": "file://___root___/node_modules/typescript/lib/lib.es2015.core.d.ts"
+                },
+                "message": "'fixed' is declared here."
+            }
+        ]
     },
     {
         "range": {
