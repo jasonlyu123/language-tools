@@ -62,6 +62,9 @@ export class SvelteCheck {
                 useNewTransformation: options.useNewTransformation ?? false
             }
         });
+        this.configManager.updateLspOptions({
+            textDocument: { publishDiagnostics: { relatedInformation: false } }
+        });
         // No HTMLPlugin, it does not provide diagnostics
         if (shouldRegister('svelte')) {
             this.pluginHost.register(new SveltePlugin(this.configManager));

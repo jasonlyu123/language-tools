@@ -150,6 +150,7 @@ export function startServer(options?: LSOptions) {
         configManager.updateScssConfig(evt.initializationOptions?.configuration?.scss);
         configManager.updateLessConfig(evt.initializationOptions?.configuration?.less);
         configManager.updateHTMLConfig(evt.initializationOptions?.configuration?.html);
+        configManager.updateLspOptions(evt.capabilities)
 
         pluginHost.initialize({
             filterIncompleteCompletions:

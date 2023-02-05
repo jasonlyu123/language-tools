@@ -6,6 +6,7 @@ import { Document } from './lib/documents';
 import { returnObjectIfHasKeys } from './utils';
 import path from 'path';
 import { FileMap } from './lib/documents/fileCollection';
+import { ClientCapabilities } from 'vscode-languageserver-protocol';
 
 /**
  * Default config for the language server.
@@ -282,6 +283,7 @@ export class LSConfigManager {
     private lessConfig: CssConfig | undefined;
     private htmlConfig: HTMLConfig | undefined;
     private isTrusted = true;
+    private lspOptions: ClientCapabilities = {};
 
     constructor() {
         this._updateTsUserPreferences('javascript', {});
@@ -584,6 +586,14 @@ export class LSConfigManager {
                 ? ts.SemicolonPreference.Insert
                 : ts.SemicolonPreference.Remove
         };
+    }
+
+    updateLspOptions(options: ClientCapabilities) {
+        this.lspOptions = options;
+    }
+
+    getLspOptions() {
+        return this.lspOptions;
     }
 
     private scheduledUpdate: NodeJS.Timeout | undefined;
