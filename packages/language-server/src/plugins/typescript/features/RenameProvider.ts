@@ -7,7 +7,13 @@ import {
     isInHTMLTagRange,
     getNodeIfIsInHTMLStartTag
 } from '../../../lib/documents';
-import { filterAsync, isNotNullOrUndefined, pathToUrl, unique } from '../../../utils';
+import {
+    createGetCanonicalFileName,
+    filterAsync,
+    isNotNullOrUndefined,
+    pathToUrl,
+    unique
+} from '../../../utils';
 import { RenameProvider } from '../../interfaces';
 import { DocumentSnapshot, SvelteDocumentSnapshot } from '../DocumentSnapshot';
 import { convertRange } from '../utils';
@@ -18,13 +24,11 @@ import {
     isAfterSvelte2TsxPropsReturn,
     isTextSpanInGeneratedCode,
     SnapshotMap,
-    findContainingNode,
     isStoreVariableIn$storeDeclaration,
     get$storeOffsetOf$storeDeclaration,
     getStoreOffsetOf$storeDeclaration,
     is$storeVariableIn$storeDeclaration
 } from './utils';
-import { LSConfigManager } from '../../../ls-config';
 import { isAttributeName, isEventHandler } from '../svelte-ast-utils';
 
 interface TsRenameLocation extends ts.RenameLocation {
@@ -33,10 +37,7 @@ interface TsRenameLocation extends ts.RenameLocation {
 }
 
 export class RenameProviderImpl implements RenameProvider {
-    constructor(
-        private readonly lsAndTsDocResolver: LSAndTSDocResolver,
-        private readonly configManager: LSConfigManager
-    ) {}
+    constructor(private readonly lsAndTsDocResolver: LSAndTSDocResolver) {}
 
     // TODO props written as `export {x as y}` are not supported yet.
 
@@ -91,7 +92,6 @@ export class RenameProviderImpl implements RenameProvider {
         );
 
         convertedRenameLocations = this.checkShortHandBindingOrSlotLetLocation(
-            lang,
             convertedRenameLocations,
             docs
         );
@@ -112,7 +112,8 @@ export class RenameProviderImpl implements RenameProvider {
                 : await this.getAdditionalLocationsForRenameOfPropInsideOtherComponent(
                       convertedRenameLocations,
                       docs,
-                      lang
+                      lang,
+                      tsDoc.filePath
                   );
         convertedRenameLocations = [
             ...convertedRenameLocations,
@@ -210,7 +211,7 @@ export class RenameProviderImpl implements RenameProvider {
                 if (
                     isStoreVariableIn$storeDeclaration(snapshot.getFullText(), loc.textSpan.start)
                 ) {
-                    // User renamed store, also rename correspondig $store locations
+                    // User renamed store, also rename corresponding $store locations
                     const storeRenameLocations = lang.findRenameLocations(
                         snapshot.filePath,
                         get$storeOffsetOf$storeDeclaration(
@@ -266,8 +267,14 @@ export class RenameProviderImpl implements RenameProvider {
     ) {
         // First find out if it's really the "rename prop inside component with that prop" case
         // Use original document for that because only there the `export` is present.
+        // ':' for typescript's type operator (`export let bla: boolean`)
+        // '//' and '/*' for comments (`export let bla// comment` or `export let bla/* comment */`)
         const regex = new RegExp(
-            `export\\s+let\\s+${this.getVariableAtPosition(tsDoc, lang, position)}($|\\s|;|:)` // ':' for typescript's type operator (`export let bla: boolean`)
+            `export\\s+let\\s+${this.getVariableAtPosition(
+                tsDoc,
+                lang,
+                position
+            )}($|\\s|;|:|\/\*|\/\/)`
         );
         const isRenameInsideComponentWithProp = regex.test(
             getLineAtPosition(position, document.getText())
@@ -301,7 +308,11 @@ export class RenameProviderImpl implements RenameProvider {
                 rename.fileName !== updatePropLocation.fileName ||
                 this.isInSvelte2TsxPropLine(tsDoc, rename)
         );
-        return await this.mapAndFilterRenameLocations(replacementsForProp, snapshots);
+
+        return this.checkShortHandBindingForParentComponents(
+            await this.mapAndFilterRenameLocations(replacementsForProp, snapshots),
+            snapshots
+        );
     }
 
     /**
@@ -315,14 +326,20 @@ export class RenameProviderImpl implements RenameProvider {
     private async getAdditionalLocationsForRenameOfPropInsideOtherComponent(
         convertedRenameLocations: TsRenameLocation[],
         snapshots: SnapshotMap,
-        lang: ts.LanguageService
+        lang: ts.LanguageService,
+        requestedFileName: string
     ) {
         // Check if it's a prop rename
         const updatePropLocation = this.findLocationWhichWantsToUpdatePropName(
             convertedRenameLocations,
             snapshots
         );
-        if (!updatePropLocation) {
+        const getCanonicalFileName = createGetCanonicalFileName(ts.sys.useCaseSensitiveFileNames);
+        if (
+            !updatePropLocation ||
+            getCanonicalFileName(updatePropLocation.fileName) ===
+                getCanonicalFileName(requestedFileName)
+        ) {
             return [];
         }
         // Find generated `export let`
@@ -337,7 +354,6 @@ export class RenameProviderImpl implements RenameProvider {
             lang.findRenameLocations(updatePropLocation.fileName, idx, false, false) || [];
 
         return this.checkShortHandBindingOrSlotLetLocation(
-            lang,
             await this.mapAndFilterRenameLocations(replacementsForProp, snapshots),
             snapshots
         );
@@ -350,12 +366,13 @@ export class RenameProviderImpl implements RenameProvider {
     ) {
         const regex = new RegExp(
             // no 'export let', only 'let', because that's what it's translated to in svelte2tsx
+            // '//' and '/*' for comments (`let bla/*Ωignore_startΩ*/`)
             `\\s+let\\s+(${snapshot
                 .getFullText()
                 .substring(
                     updatePropLocation.textSpan.start,
                     updatePropLocation.textSpan.start + updatePropLocation.textSpan.length
-                )})($|\\s|;|:)`
+                )})($|\\s|;|:|\/\*|\/\/)`
         );
         const match = snapshot.getFullText().match(regex);
         return match;
@@ -477,21 +494,13 @@ export class RenameProviderImpl implements RenameProvider {
     }
 
     private checkShortHandBindingOrSlotLetLocation(
-        lang: ts.LanguageService,
         renameLocations: TsRenameLocation[],
         snapshots: SnapshotMap
     ): TsRenameLocation[] {
         const bind = 'bind:';
 
         return renameLocations.map((location) => {
-            const sourceFile = lang.getProgram()?.getSourceFile(location.fileName);
-
-            if (
-                !sourceFile ||
-                location.fileName !== sourceFile.fileName ||
-                location.range.start.line < 0 ||
-                location.range.end.line < 0
-            ) {
+            if (location.range.start.line < 0 || location.range.end.line < 0) {
                 return location;
             }
 
@@ -503,9 +512,9 @@ export class RenameProviderImpl implements RenameProvider {
             const { parent } = snapshot;
 
             let rangeStart = parent.offsetAt(location.range.start);
-            let prefixText = location.prefixText?.trimRight();
+            let prefixText = location.prefixText?.trimEnd();
 
-            // rename needs to be prefixed in case of a bind shortand on a HTML element
+            // rename needs to be prefixed in case of a bind shorthand on a HTML element
             if (!prefixText) {
                 const original = parent.getText({
                     start: Position.create(
@@ -561,6 +570,48 @@ export class RenameProviderImpl implements RenameProvider {
                 location.range = {
                     start: parent.positionAt(rangeStart),
                     end: parent.positionAt(rangeEnd)
+                };
+            }
+
+            return location;
+        });
+    }
+
+    private checkShortHandBindingForParentComponents(
+        renameLocations: TsRenameLocation[],
+        snapshots: SnapshotMap
+    ): TsRenameLocation[] {
+        const bind = 'bind:';
+
+        return renameLocations.map((location) => {
+            if (location.range.start.line < 0 || location.range.end.line < 0) {
+                return location;
+            }
+
+            const snapshot = snapshots.get(location.fileName);
+            if (!(snapshot instanceof SvelteDocumentSnapshot)) {
+                return location;
+            }
+
+            const { parent } = snapshot;
+            const rangeStart = parent.offsetAt(location.range.start);
+            const beforeStart = snapshot.getOriginalText().slice(0, rangeStart);
+
+            if (beforeStart.endsWith(bind)) {
+                return {
+                    ...location,
+                    suffixText: `={${parent.getText(location.range)}}`
+                };
+            }
+
+            // '{' but not '={' nor '= {'
+            if (beforeStart.endsWith('{') && !beforeStart.slice(0, -1).trim().endsWith('=')) {
+                const beforeShorthand = parent.positionAt(rangeStart - 1);
+                return {
+                    ...location,
+                    range: { start: beforeShorthand, end: beforeShorthand },
+                    prefixText: undefined,
+                    suffixText: '='
                 };
             }
 

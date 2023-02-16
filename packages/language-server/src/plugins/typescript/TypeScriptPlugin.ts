@@ -145,7 +145,7 @@ export class TypeScriptPlugin
             this.lsAndTsDocResolver,
             configManager
         );
-        this.renameProvider = new RenameProviderImpl(this.lsAndTsDocResolver, configManager);
+        this.renameProvider = new RenameProviderImpl(this.lsAndTsDocResolver);
         this.hoverProvider = new HoverProviderImpl(this.lsAndTsDocResolver);
         this.findReferencesProvider = new FindReferencesProviderImpl(this.lsAndTsDocResolver);
         this.findFileReferencesProvider = new FindFileReferencesProviderImpl(
