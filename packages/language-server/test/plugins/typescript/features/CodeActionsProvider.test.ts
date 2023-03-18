@@ -373,7 +373,7 @@ describe('CodeActionsProvider', () => {
                         {
                             edits: [
                                 {
-                                    newText: `\n${indent}import { blubb } from "../definitions";\n\n`,
+                                    newText: `\n${indent}import { blubb } from "../definitions";\n`,
                                     range: Range.create(
                                         Position.create(0, 8),
                                         Position.create(0, 8)
@@ -874,28 +874,9 @@ describe('CodeActionsProvider', () => {
                 {
                     edits: [
                         {
-                            newText: `\n${indent}import FixAllImported from \"./importing/FixAllImported.svelte\";\n`,
-                            range: {
-                                start: {
-                                    character: 18,
-                                    line: 0
-                                },
-                                end: {
-                                    character: 18,
-                                    line: 0
-                                }
-                            }
-                        }
-                    ],
-                    textDocument: {
-                        uri: getUri('codeaction-custom-fix-all-component.svelte'),
-                        version: null
-                    }
-                },
-                {
-                    edits: [
-                        {
-                            newText: `${indent}import FixAllImported2 from \"./importing/FixAllImported2.svelte\";\n`,
+                            newText:
+                                `\n${indent}import FixAllImported from \"./importing/FixAllImported.svelte\";\n` +
+                                `${indent}import FixAllImported2 from \"./importing/FixAllImported2.svelte\";\n`,
                             range: {
                                 start: {
                                     character: 18,
@@ -945,28 +926,9 @@ describe('CodeActionsProvider', () => {
                 {
                     edits: [
                         {
-                            newText: `\n${indent}import { FixAllImported3 } from \"./importing/c\";\n`,
-                            range: {
-                                start: {
-                                    character: 18,
-                                    line: 0
-                                },
-                                end: {
-                                    character: 18,
-                                    line: 0
-                                }
-                            }
-                        }
-                    ],
-                    textDocument: {
-                        uri: getUri('codeaction-custom-fix-all-component2.svelte'),
-                        version: null
-                    }
-                },
-                {
-                    edits: [
-                        {
-                            newText: `${indent}import FixAllImported2 from \"./importing/FixAllImported2.svelte\";\n`,
+                            newText:
+                                `\n${indent}import { FixAllImported3 } from \"./importing/c\";\n` +
+                                `${indent}import FixAllImported2 from \"./importing/FixAllImported2.svelte\";\n`,
                             range: {
                                 start: {
                                     character: 18,
@@ -1016,7 +978,9 @@ describe('CodeActionsProvider', () => {
                 {
                     edits: [
                         {
-                            newText: `\n${indent}import { someOtherStore } from \"./importing/b\";\n`,
+                            newText:
+                                `\n${indent}import { someStore } from \"./importing/a\";\n` +
+                                `${indent}import { someOtherStore } from \"./importing/b\";\n`,
                             range: {
                                 start: {
                                     character: 18,
@@ -1033,25 +997,60 @@ describe('CodeActionsProvider', () => {
                         uri: getUri('codeaction-custom-fix-all-store.svelte'),
                         version: null
                     }
-                },
+                }
+            ]
+        });
+    });
+
+    it('provide quick fix to fix all missing import component (without script tag)', async () => {
+        const { provider, document } = setup(
+            'check-js/codeaction-custom-fix-all-component3.svelte'
+        );
+
+        const range = Range.create(Position.create(0, 1), Position.create(0, 15));
+        const codeActions = await provider.getCodeActions(document, range, {
+            diagnostics: [
+                {
+                    code: 2304,
+                    message: "Cannot find name 'FixAllImported'.",
+                    range: range,
+                    source: 'js'
+                }
+            ],
+            only: [CodeActionKind.QuickFix]
+        });
+
+        const fixAll = codeActions.find((action) => action.data);
+        const resolvedFixAll = await provider.resolveCodeAction(document, fixAll!);
+
+        (<TextDocumentEdit>resolvedFixAll?.edit?.documentChanges?.[0])?.edits.forEach(
+            (edit) => (edit.newText = harmonizeNewLines(edit.newText))
+        );
+
+        assert.deepStrictEqual(resolvedFixAll.edit, {
+            documentChanges: [
                 {
                     edits: [
                         {
-                            newText: `${indent}import { someStore } from \"./importing/a\";\n`,
+                            newText:
+                                '<script>\n' +
+                                `${indent}import FixAllImported from \"./importing/FixAllImported.svelte\";\n` +
+                                `${indent}import FixAllImported2 from \"./importing/FixAllImported2.svelte\";\n\n` +
+                                '</script>\n',
                             range: {
                                 start: {
-                                    character: 18,
+                                    character: 0,
                                     line: 0
                                 },
                                 end: {
-                                    character: 18,
+                                    character: 0,
                                     line: 0
                                 }
                             }
                         }
                     ],
                     textDocument: {
-                        uri: getUri('codeaction-custom-fix-all-store.svelte'),
+                        uri: getUri('check-js/codeaction-custom-fix-all-component3.svelte'),
                         version: null
                     }
                 }

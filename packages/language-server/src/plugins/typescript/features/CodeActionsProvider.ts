@@ -29,6 +29,7 @@ import {
     isNotNullOrUndefined,
     memoize,
     modifyLines,
+    normalizePath,
     pathToUrl,
     possiblyComponent
 } from '../../../utils';
@@ -52,7 +53,7 @@ import {
     SnapshotMap
 } from './utils';
 import { DiagnosticCode } from './DiagnosticsProvider';
-import { groupBy } from 'lodash';
+import { createGetCanonicalFileName } from '../../../utils';
 
 /**
  * TODO change this to protocol constant if it's part of the protocol
@@ -67,7 +68,6 @@ interface RefactorArgs {
 }
 
 interface CustomFixCannotFindNameInfo extends ts.CodeFixAction {
-    name: string;
     position: Position;
 }
 
@@ -91,6 +91,7 @@ interface QuickFixAllResolveInfo extends TextDocumentIdentifier {
 const FIX_IMPORT_FIX_NAME = 'import';
 const FIX_IMPORT_FIX_ID = 'fixMissingImport';
 const FIX_IMPORT_FIX_DESCRIPTION = 'Add all missing imports';
+const nonIdentifierRegex = /[\`\~\!\%\^\&\*\(\)\-\=\+\[\{\]\}\\\|\;\:\'\"\,\.\<\>/\?\s]/;
 
 export class CodeActionsProviderImpl implements CodeActionsProvider {
     constructor(
@@ -166,18 +167,6 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
         );
         const formatCodeBasis = getFormatCodeBasis(formatCodeSettings);
 
-        const fix = lang.getCombinedCodeFix(
-            {
-                type: 'file',
-                fileName: tsDoc.filePath
-            },
-            codeAction.data.fixId,
-            formatCodeSettings,
-            userPreferences
-        );
-
-        const snapshots = new SnapshotMap(this.lsAndTsDocResolver);
-
         const getDiagnostics = memoize(() =>
             lang.getSemanticDiagnostics(tsDoc.filePath).map(
                 (dia): Diagnostic => ({
@@ -188,10 +177,34 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
             )
         );
 
-        if (cancellationToken?.isCancellationRequested) {
-            return codeAction;
+        const isImportFix = codeAction.data.fixName === FIX_IMPORT_FIX_NAME;
+        const virtualDoc = isImportFix
+            ? this.getOrCreateVirtualDocumentForCombinedCodeFix(document, getDiagnostics())
+            : document;
+
+        if (isImportFix) {
+            await this.lsAndTsDocResolver.getSnapshot(virtualDoc);
         }
 
+        const fix = lang.getCombinedCodeFix(
+            {
+                type: 'file',
+                fileName: virtualDoc.getFilePath()!
+            },
+            codeAction.data.fixId,
+            formatCodeSettings,
+            userPreferences
+        );
+
+        const getCanonicalFileName = createGetCanonicalFileName(ts.sys.useCaseSensitiveFileNames);
+        const virtualDocPath = getCanonicalFileName(normalizePath(virtualDoc.getFilePath() ?? ''));
+        for (const change of fix.changes) {
+            if (getCanonicalFileName(normalizePath(change.fileName)) === virtualDocPath) {
+                change.fileName = tsDoc.filePath;
+            }
+        }
+
+        const snapshots = new SnapshotMap(this.lsAndTsDocResolver);
         const fixActions: ts.CodeFixAction[] = [
             {
                 fixName: codeAction.data.fixName,
@@ -199,47 +212,6 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
                 description: ''
             }
         ];
-
-        const isImportFix = codeAction.data.fixName === FIX_IMPORT_FIX_NAME;
-        if (isImportFix) {
-            const componentActions =
-                this.getComponentImportQuickFix(
-                    document,
-                    lang,
-                    tsDoc,
-                    userPreferences,
-                    getDiagnostics(),
-                    formatCodeSettings
-                ) ?? [];
-
-            const svelteQuickFixes = this.getSvelteQuickFixes(
-                lang,
-                document,
-                getDiagnostics().filter(
-                    (diag) => document.getText()[document.offsetAt(diag.range.start)] === '$'
-                ),
-                tsDoc,
-                formatCodeBasis,
-                userPreferences,
-                formatCodeSettings
-            );
-
-            const fixes = Object.values(
-                groupBy(
-                    [...componentActions, ...svelteQuickFixes].filter((info) => {
-                        const regex = this.toImportMemberRegex(info.name);
-                        return !fix.changes.some((c) =>
-                            c.textChanges.some((c) => regex.test(c.newText))
-                        );
-                    }),
-                    (info) => info.name
-                )
-            )
-                .map((info) => info[0])
-                .filter(isNotNullOrUndefined);
-
-            fixActions.push(...fixes);
-        }
 
         const documentChangesPromises = fixActions.flatMap((fix) =>
             this.convertAndFixCodeFixAction({
@@ -260,7 +232,7 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
         }
 
         if (isImportFix) {
-            documentChanges = this.combineImportQuickFix(
+            documentChanges = this.wrapScriptTagForCombinedImportQuickFix(
                 documentChanges,
                 document,
                 formatCodeBasis
@@ -274,65 +246,79 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
         return codeAction;
     }
 
-    private combineImportQuickFix(
+    private getOrCreateVirtualDocumentForCombinedCodeFix(
+        document: Document,
+        diagnostics: Diagnostic[]
+    ) {
+        const virtualUri = document.uri + '.virtual.svelte';
+        const usageToDefinition = new Map<string, string>();
+
+        for (const diagnostic of diagnostics) {
+            const name = document.getText(diagnostic.range).trim();
+
+            if (nonIdentifierRegex.test(name)) {
+                continue;
+            }
+
+            if (name.startsWith('$')) {
+                usageToDefinition.set(name, name.slice(1));
+                continue;
+            }
+
+            if (!isInScript(diagnostic.range.start, document)) {
+                const offset = document.offsetAt(diagnostic.range.start);
+                const node = document.html.findNodeAt(offset);
+
+                if (
+                    possiblyComponent(node) &&
+                    node.start === offset - 1 &&
+                    !usageToDefinition.has(name)
+                ) {
+                    usageToDefinition.set(name, toGeneratedSvelteComponentName(name));
+                    continue;
+                }
+            }
+
+            // prefer same name
+            usageToDefinition.set(name, name);
+        }
+
+        const inserts = Array.from(usageToDefinition.values())
+            .map((name) => name + ';')
+            .join('');
+
+        if (document.scriptInfo) {
+            return new Document(
+                virtualUri,
+                document.getText().slice(0, document.scriptInfo.end) +
+                    inserts +
+                    document.getText().slice(document.scriptInfo.end)
+            );
+        }
+
+        return new Document(virtualUri, document.getText() + `<script>${inserts}</script>`);
+    }
+
+    private wrapScriptTagForCombinedImportQuickFix(
         documentChanges: TextDocumentEdit[],
         document: Document,
         formatCodeBasis: FormatCodeBasis
     ) {
-        const insertGroups = new Map<string, TextEdit[]>();
-        for (const documentChange of documentChanges) {
-            for (const edit of documentChange.edits) {
-                const key = `${documentChange.textDocument.uri}#${edit.range.start.line}:${edit.range.start.character}`;
-                insertGroups.set(key, [...(insertGroups.get(key) ?? []), edit]);
-            }
-        }
-
-        const startScript = document.scriptInfo?.startPos;
-
-        for (const [, insertGroup] of insertGroups) {
-            for (const edit of insertGroup) {
-                edit.newText =
-                    formatCodeBasis.baseIndent + edit.newText.trim() + formatCodeBasis.newLine;
-            }
-
-            const firstRange = insertGroup[0]?.range;
-            if (
-                firstRange &&
-                startScript &&
-                firstRange.start.line === startScript.line &&
-                firstRange.start.character === startScript.character
-            ) {
-                insertGroup[0].newText = formatCodeBasis.newLine + insertGroup[0].newText;
-            }
-        }
-
         if (documentChanges.length && !document.scriptInfo && !document.moduleScriptInfo) {
-            const textDocument = {
-                uri: document.uri,
-                version: null
-            };
+            const editForThisFile = documentChanges.find(
+                (change) => change.textDocument.uri === document.uri
+            );
 
-            documentChanges = [
-                {
-                    textDocument,
-                    edits: [
-                        TextEdit.insert(
-                            Position.create(0, 0),
-                            getNewScriptStartTag(this.configManager.getConfig())
-                        )
-                    ]
-                },
-                ...documentChanges,
-                {
-                    textDocument,
-                    edits: [
-                        TextEdit.insert(
-                            Position.create(0, 0),
-                            '</script>' + formatCodeBasis.newLine
-                        )
-                    ]
-                }
-            ];
+            if (editForThisFile?.edits.length) {
+                const first = editForThisFile.edits[0];
+                first.newText =
+                    getNewScriptStartTag(this.configManager.getConfig()) +
+                    formatCodeBasis.baseIndent +
+                    first.newText.trimStart();
+
+                const last = editForThisFile.edits[editForThisFile.edits.length - 1];
+                last.newText = last.newText + '</script>' + formatCodeBasis.newLine;
+            }
         }
         return documentChanges;
     }
@@ -631,6 +617,7 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
                                 edit,
                                 true,
                                 startPos,
+                                formatCodeBasis.newLine,
                                 undefined,
                                 skipAddScriptTag
                             );
@@ -744,14 +731,9 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
             document,
             DiagnosticCode.CANNOT_FIND_NAME,
             diagnostics,
-            (possibleIdentifier) => {
-                // in case it is not a identifier, but wrong regex syntax
-                try {
-                    return this.toImportMemberRegex(possibleIdentifier).test(edit.newText);
-                } catch (error) {
-                    return false;
-                }
-            }
+            (possibleIdentifier) =>
+                !nonIdentifierRegex.test(possibleIdentifier) &&
+                this.toImportMemberRegex(possibleIdentifier).test(edit.newText)
         );
     }
 
@@ -912,7 +894,6 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
                         fixName: FIX_IMPORT_FIX_NAME,
                         fixId: FIX_IMPORT_FIX_ID,
                         fixAllDescription: FIX_IMPORT_FIX_DESCRIPTION,
-                        name: changeSvelteComponentName(c.name),
                         position: originalPosition
                     })
                 ) ?? [];
