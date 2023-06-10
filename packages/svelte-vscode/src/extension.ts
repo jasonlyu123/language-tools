@@ -3,6 +3,8 @@ import {
     commands,
     ExtensionContext,
     extensions,
+    FileStat,
+    FileType,
     IndentAction,
     languages,
     Position,
@@ -76,6 +78,10 @@ export function activate(context: ExtensionContext) {
                 lsApi = activateSvelteLanguageServer(context);
             }
 
+            if (!lsApi) {
+                throw new Error('Could not activate Svelte language server');
+            }
+
             return lsApi.getLS();
         }
     };
@@ -105,7 +111,24 @@ export function activateSvelteLanguageServer(context: ExtensionContext) {
                 : path.join(rootPath as string, tempLsPath)
             : undefined;
 
-    const serverModule = require.resolve(lsPath || 'svelte-language-server/bin/server.js');
+    let serverModule: string;
+
+    try {
+        serverModule = require.resolve(lsPath || 'svelte-language-server/bin/server.js');
+    } catch (error) {
+        if (!lsPath) {
+            window.showErrorMessage(
+                'Cannot find Svelte language server. The installation may be corrupted. Please try reinstalling the extension.'
+            );
+            return;
+        }
+        checkServerModuleConfig(lsPath).then((message) => {
+            if (message) {
+                window.showErrorMessage('The Svelte language server failed to start. ' + message);
+            }
+        });
+        return;
+    }
     console.log('Loading server from ', serverModule);
 
     // Add --experimental-modules flag for people using node 12 < version < 12.17
@@ -171,21 +194,25 @@ export function activateSvelteLanguageServer(context: ExtensionContext) {
     };
 
     let ls = createLanguageServer(serverOptions, clientOptions);
-    ls.start().then(() => {
-        const tagRequestor = (document: TextDocument, position: Position) => {
-            const param = ls.code2ProtocolConverter.asTextDocumentPositionParams(
-                document,
-                position
+    ls.start()
+        .then(() => {
+            const tagRequestor = (document: TextDocument, position: Position) => {
+                const param = ls.code2ProtocolConverter.asTextDocumentPositionParams(
+                    document,
+                    position
+                );
+                return ls.sendRequest(TagCloseRequest.type, param);
+            };
+            const disposable = activateTagClosing(
+                tagRequestor,
+                { svelte: true },
+                'html.autoClosingTags'
             );
-            return ls.sendRequest(TagCloseRequest.type, param);
-        };
-        const disposable = activateTagClosing(
-            tagRequestor,
-            { svelte: true },
-            'html.autoClosingTags'
-        );
-        context.subscriptions.push(disposable);
-    });
+            context.subscriptions.push(disposable);
+        })
+        .catch(() => {
+            troubleshootServerCrashOnStartup(serverRuntime, serverModule);
+        });
 
     workspace.onDidSaveTextDocument(async (doc) => {
         const parts = doc.uri.toString(true).split(/\/|\\/);
@@ -486,5 +513,96 @@ function warnIfOldExtensionInstalled() {
                 'Through the UI: You can find it when searching for "@installed" in the extensions window (searching "Svelte" won\'t work). ' +
                 'Command line: "code --uninstall-extension JamesBirtles.svelte-vscode"'
         );
+    }
+}
+async function troubleshootServerCrashOnStartup(
+    serverRuntime: string | undefined,
+    serverModule: string
+) {
+    let troubleshootingMessage = '';
+
+    if (serverRuntime) {
+        troubleshootingMessage += await checkServerRuntimeConfig(serverRuntime);
+    }
+
+    if (serverModule) {
+        troubleshootingMessage += await checkServerModuleConfig(serverModule);
+    }
+
+    troubleshootingMessage ||= `Please check the output window of the "Svelte" extension for details.`;
+
+    window.showErrorMessage(
+        `The Svelte language server crashed on startup. '${troubleshootingMessage}`
+    );
+}
+
+async function checkServerRuntimeConfig(serverRuntime: string) {
+    const configName = '"svelte.language-server.runtime"';
+    if (path.extname(serverRuntime) === '.js') {
+        return `The ${configName} config is set to a .js file. Did you meant to set the "svelte.language-server.ls-path" config?`;
+    }
+
+    const existenceMessage = await checkServerConfigFileExistence(configName, serverRuntime);
+    if (existenceMessage) {
+        return existenceMessage;
+    }
+
+    const childProcess = await import('child_process');
+
+    const notNodejsMessage = `The ${configName} config should be an executable pointing to your Node.js installation.`;
+    let version: string;
+    try {
+        version = childProcess.spawnSync(serverRuntime, ['--version']).stdout.toString();
+    } catch (e) {
+        return notNodejsMessage;
+    }
+
+    if (!version.startsWith('v')) {
+        return notNodejsMessage;
+    }
+
+    const major = parseInt(version.slice(1).split('.')[0]);
+
+    if (isNaN(major)) {
+        return notNodejsMessage;
+    }
+
+    if (major < 16) {
+        return `The ${configName} config is set to unsupported version of Node.js. Please use at least Node.js v16.`;
+    }
+
+    return '';
+}
+
+async function checkServerModuleConfig(serverModule: string) {
+    const configName = '"svelte.language-server.ls-path"';
+
+    const existenceMessage = await checkServerConfigFileExistence(configName, serverModule);
+    if (existenceMessage) {
+        return existenceMessage;
+    }
+
+    const filename = path.basename(serverModule);
+    if (filename === 'svelteserver' || filename === 'svelteserver.cmd') {
+        return `The ${configName} config is set to the shell script to launch the server. It should be the path to the js file that the shell script points to.`;
+    }
+
+    if (path.extname(serverModule) !== '.js') {
+        return `The ${configName} config is set to a non-js file. Did you meant to set the "svelte.language-server.runtime" config?`;
+    }
+
+    return '';
+}
+
+async function checkServerConfigFileExistence(configName: string, fileToCheck: string) {
+    let stat: FileStat;
+    try {
+        stat = await workspace.fs.stat(Uri.file(fileToCheck));
+    } catch (e) {
+        return `The ${configName} config is set to a non-existing file.`;
+    }
+
+    if (stat.type === FileType.Directory) {
+        return `The ${configName} config is set to a directory. It should be a path to a file.`;
     }
 }
