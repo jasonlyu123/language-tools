@@ -108,6 +108,16 @@ describe('HTML Plugin', () => {
         assert.strictEqual(tagCompletion, null);
     });
 
+    it('does not provide completions after destructured parameter', async () => {
+        const { plugin, document } = setup('<div on:click={({}) =>');
+
+        const completions = await plugin.getCompletions(document, Position.create(0, 22));
+        assert.strictEqual(completions, null);
+
+        const tagCompletion = plugin.doTagComplete(document, Position.create(0, 22));
+        assert.strictEqual(tagCompletion, null);
+    });
+
     it('does provide completions outside of moustache tag', async () => {
         const { plugin, document } = setup('<div on:click={bla} >');
 

@@ -33,11 +33,12 @@ import {
     RenameProvider,
     LinkedEditingRangesProvider
 } from '../interfaces';
-import { isInsideMoustacheTag, toRange } from '../../lib/documents/utils';
+import { toRange } from '../../lib/documents/utils';
 import { isNotNullOrUndefined, possiblyComponent } from '../../utils';
 import { importPrettier } from '../../importPackage';
 import path from 'path';
 import { Logger } from '../../logger';
+import { isInsideMoustacheTag } from '../../lib/documents/parseHtml';
 
 export class HTMLPlugin
     implements HoverProvider, CompletionsProvider, RenameProvider, LinkedEditingRangesProvider
@@ -259,7 +260,10 @@ export class HTMLPlugin
     private isInsideMoustacheTag(html: HTMLDocument, document: Document, position: Position) {
         const offset = document.offsetAt(position);
         const node = html.findNodeAt(offset);
-        return isInsideMoustacheTag(document.getText(), node.start, offset);
+
+        return isInsideMoustacheTag(document.getText(), offset, {
+            tagStart: node.start
+        });
     }
 
     getDocumentSymbols(document: Document): SymbolInformation[] {

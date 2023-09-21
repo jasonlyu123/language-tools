@@ -114,4 +114,11 @@ describe('parseHtml', () => {
             )
         );
     });
+
+    it('parse destructuring in inline handler', () => {
+        testRootElements(
+            parseHtml(`<Foo on:click={({ detail }) => {}} />
+                <style></style>`)
+        );
+    });
 });

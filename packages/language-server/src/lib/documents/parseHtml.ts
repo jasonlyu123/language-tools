@@ -8,7 +8,8 @@ import {
     Position
 } from 'vscode-html-languageservice';
 import { Document } from './Document';
-import { isInsideMoustacheTag } from './utils';
+import ts from 'typescript';
+import { memoize } from '../../utils';
 
 const parser = getLanguageService();
 
@@ -30,13 +31,18 @@ const createScanner = parser.createScanner as (
     initialState?: ScannerState
 ) => Scanner;
 
+function createTsScanner() {
+    return ts.createScanner(ts.ScriptTarget.Latest, false);
+}
+
 /**
  * scan the text and remove any `>` or `<` that cause the tag to end short,
  */
 function preprocess(text: string) {
     let scanner = createScanner(text);
     let token = scanner.scan();
-    let currentStartTagStart: number | null = null;
+    let currentAttributeValueStart: number | null = null;
+    const createTsScannerWithCache = memoize(createTsScanner);
 
     while (token !== TokenType.EOS) {
         const offset = scanner.getTokenOffset();
@@ -44,21 +50,17 @@ function preprocess(text: string) {
         if (token === TokenType.StartTagOpen) {
             if (shouldBlankStartOrEndTagLike(offset)) {
                 blankStartOrEndTagLike(offset);
-            } else {
-                currentStartTagStart = offset;
             }
         }
 
         if (token === TokenType.StartTagClose) {
             if (shouldBlankStartOrEndTagLike(offset)) {
                 blankStartOrEndTagLike(offset);
-            } else {
-                currentStartTagStart = null;
             }
         }
 
-        if (token === TokenType.StartTagSelfClose) {
-            currentStartTagStart = null;
+        if (token === TokenType.AttributeValue) {
+            currentAttributeValueStart = offset;
         }
 
         // <Foo checked={a < 1}>
@@ -78,7 +80,12 @@ function preprocess(text: string) {
     return text;
 
     function shouldBlankStartOrEndTagLike(offset: number) {
-        return isInsideMoustacheTag(text, currentStartTagStart, offset);
+        return isInsideMoustacheTag(
+            text,
+            offset,
+            { attributeValueStart: currentAttributeValueStart ?? undefined },
+            createTsScannerWithCache
+        );
     }
 
     function blankStartOrEndTagLike(offset: number) {
@@ -169,5 +176,82 @@ export function getAttributeContextAtPosition(
 }
 
 function inStartTag(offset: number, node: Node) {
-    return offset > node.start && node.startTagEnd != undefined && offset < node.startTagEnd;
+    const end = node.startTagEnd ?? node.end;
+    return offset > node.start && end && offset < end;
+}
+
+/**
+ * Checks whether given position is inside a moustache tag (which includes control flow tags)
+ * using a simple bracket matching heuristic which might fail under conditions like
+ * `{#if {a: true}.a}`
+ */
+export function isInsideMoustacheTag(
+    html: string,
+    position: number,
+    checkStart: { attributeValueStart?: number; tagStart?: number },
+    createScanner = () => ts.createScanner(ts.ScriptTarget.Latest, false)
+) {
+    if (checkStart.attributeValueStart == null && checkStart.tagStart == null) {
+        // Not inside <tag ... >
+        const charactersBeforePosition = html.substring(0, position);
+        return (
+            Math.max(
+                // TODO make this just check for '{'?
+                // Theoretically, someone could do {a < b} in a simple moustache tag
+                charactersBeforePosition.lastIndexOf('{#'),
+                charactersBeforePosition.lastIndexOf('{:'),
+                charactersBeforePosition.lastIndexOf('{@')
+            ) > charactersBeforePosition.lastIndexOf('}')
+        );
+    }
+
+    const attributeValueStart =
+        checkStart.attributeValueStart ??
+        (checkStart.tagStart != null
+            ? getNearestAttributeStart(html, checkStart.tagStart, position)
+            : null);
+
+    if (!attributeValueStart) {
+        return false;
+    }
+
+    const attributeValue = html.substring(attributeValueStart, position);
+    if (!attributeValue.includes('{')) {
+        return false;
+    }
+
+    let startBracketCounts = 0;
+    let endBracketCounts = 0;
+
+    const tsScanner = createScanner();
+    tsScanner.setText(attributeValue);
+    while (tsScanner.scan() !== ts.SyntaxKind.EndOfFileToken) {
+        switch (tsScanner.getToken()) {
+            case ts.SyntaxKind.OpenBraceToken:
+                startBracketCounts++;
+                break;
+            case ts.SyntaxKind.CloseBraceToken:
+                endBracketCounts++;
+                break;
+        }
+    }
+
+    return startBracketCounts > endBracketCounts;
+}
+
+function getNearestAttributeStart(html: string, tagStart: number, position: number) {
+    const scanner = createScanner(html.slice(0, position), tagStart);
+    let token = scanner.scan();
+    let lastAttributeStart: number | undefined;
+    while (token !== TokenType.EOS) {
+        const offset = scanner.getTokenOffset();
+
+        if (token === TokenType.AttributeValue) {
+            lastAttributeStart = offset;
+        }
+
+        token = scanner.scan();
+    }
+
+    return lastAttributeStart;
 }
