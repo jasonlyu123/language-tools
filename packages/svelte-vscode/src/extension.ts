@@ -41,7 +41,14 @@ namespace TagCloseRequest {
     );
 }
 
+const LS_PATH_CONFIG_QUOTED = '"svelte.language-server.ls-path"';
+const LS_RUNTIME_CONFIG_QUOTED = '"svelte.language-server.runtime"';
+
+// don't forget to update package.json when changing this
+const MIN_NODE_MAJOR = 16;
+
 let lsApi: { getLS(): LanguageClient } | undefined;
+let restartWorker: () => Promise<void> | undefined;
 
 export function activate(context: ExtensionContext) {
     // The extension is activated on TS/JS/Svelte files because else it might be too late to configure the TS plugin:
@@ -65,6 +72,11 @@ export function activate(context: ExtensionContext) {
     }
 
     setupSvelteKit(context);
+    context.subscriptions.push(
+        commands.registerCommand('svelte.restartLanguageServer', async () => {
+            await restartWorker?.();
+        })
+    );
 
     // This API is considered private and only exposed for experimenting.
     // Interface may change at any time. Use at your own risk!
@@ -116,7 +128,8 @@ export function activateSvelteLanguageServer(context: ExtensionContext) {
     try {
         serverModule = require.resolve(lsPath || 'svelte-language-server/bin/server.js');
     } catch (error) {
-        if (!lsPath) {
+        const usesBundledServer = !lsPath;
+        if (usesBundledServer) {
             window.showErrorMessage(
                 'Cannot find Svelte language server. The installation may be corrupted. Please try reinstalling the extension.'
             );
@@ -131,9 +144,7 @@ export function activateSvelteLanguageServer(context: ExtensionContext) {
     }
     console.log('Loading server from ', serverModule);
 
-    // Add --experimental-modules flag for people using node 12 < version < 12.17
-    // Remove this in mid 2022 and bump vs code minimum required version to 1.55
-    const runExecArgv: string[] = ['--experimental-modules'];
+    const runExecArgv: string[] = [];
     let port = runtimeConfig.get<number>('port') ?? -1;
     if (port < 0) {
         port = 6009;
@@ -141,7 +152,7 @@ export function activateSvelteLanguageServer(context: ExtensionContext) {
         console.log('setting port to', port);
         runExecArgv.push(`--inspect=${port}`);
     }
-    const debugOptions = { execArgv: ['--nolazy', '--experimental-modules', `--inspect=${port}`] };
+    const debugOptions = { execArgv: ['--nolazy', `--inspect=${port}`] };
 
     const serverOptions: ServerOptions = {
         run: {
@@ -232,11 +243,9 @@ export function activateSvelteLanguageServer(context: ExtensionContext) {
         }
     });
 
-    context.subscriptions.push(
-        commands.registerCommand('svelte.restartLanguageServer', async () => {
-            await restartLS(true);
-        })
-    );
+    restartWorker = async () => {
+        await restartLS(true);
+    };
 
     let restartingLs = false;
     async function restartLS(showNotification: boolean) {
@@ -247,7 +256,12 @@ export function activateSvelteLanguageServer(context: ExtensionContext) {
         restartingLs = true;
         await ls.stop();
         ls = createLanguageServer(serverOptions, clientOptions);
-        await ls.start();
+        try {
+            await ls.start();
+        } catch (error) {
+            troubleshootServerCrashOnStartup(serverRuntime, serverModule);
+            return;
+        }
         if (showNotification) {
             window.showInformationMessage('Svelte language server restarted.');
         }
@@ -267,7 +281,7 @@ export function activateSvelteLanguageServer(context: ExtensionContext) {
 
     addCompilePreviewCommand(getLS, context);
 
-    addExtracComponentCommand(getLS, context);
+    addExtractComponentCommand(getLS, context);
 
     languages.setLanguageConfiguration('svelte', {
         indentationRules: {
@@ -476,7 +490,7 @@ function addCompilePreviewCommand(getLS: () => LanguageClient, context: Extensio
     );
 }
 
-function addExtracComponentCommand(getLS: () => LanguageClient, context: ExtensionContext) {
+function addExtractComponentCommand(getLS: () => LanguageClient, context: ExtensionContext) {
     context.subscriptions.push(
         commands.registerTextEditorCommand('svelte.extractComponent', async (editor) => {
             if (editor?.document?.languageId !== 'svelte') {
@@ -540,12 +554,12 @@ async function troubleshootServerCrashOnStartup(
 }
 
 async function checkServerRuntimeConfig(serverRuntime: string) {
-    const configName = '"svelte.language-server.runtime"';
+    const configName = LS_RUNTIME_CONFIG_QUOTED;
     if (path.extname(serverRuntime) === '.js') {
-        return `The ${configName} config is set to a .js file. Did you meant to set the "svelte.language-server.ls-path" config?`;
+        return `The ${configName} config is set to a .js file. Did you meant to set the ${LS_PATH_CONFIG_QUOTED} config?`;
     }
 
-    const existenceMessage = await checkServerConfigFileExistence(configName, serverRuntime);
+    const existenceMessage = await checkServerConfigTargetExistence(configName, serverRuntime);
     if (existenceMessage) {
         return existenceMessage;
     }
@@ -570,7 +584,7 @@ async function checkServerRuntimeConfig(serverRuntime: string) {
         return notNodejsMessage;
     }
 
-    if (major < 16) {
+    if (major < MIN_NODE_MAJOR) {
         return `The ${configName} config is set to unsupported version of Node.js. Please use at least Node.js v16.`;
     }
 
@@ -578,9 +592,9 @@ async function checkServerRuntimeConfig(serverRuntime: string) {
 }
 
 async function checkServerModuleConfig(serverModule: string) {
-    const configName = '"svelte.language-server.ls-path"';
+    const configName = LS_PATH_CONFIG_QUOTED;
 
-    const existenceMessage = await checkServerConfigFileExistence(configName, serverModule);
+    const existenceMessage = await checkServerConfigTargetExistence(configName, serverModule);
     if (existenceMessage) {
         return existenceMessage;
     }
@@ -597,7 +611,7 @@ async function checkServerModuleConfig(serverModule: string) {
     return '';
 }
 
-async function checkServerConfigFileExistence(configName: string, fileToCheck: string) {
+async function checkServerConfigTargetExistence(configName: string, fileToCheck: string) {
     let stat: FileStat;
     try {
         stat = await workspace.fs.stat(Uri.file(fileToCheck));
