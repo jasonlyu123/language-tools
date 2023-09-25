@@ -8,12 +8,16 @@ import { HoverProviderImpl } from '../../../../src/plugins/typescript/features/H
 import { LSAndTSDocResolver } from '../../../../src/plugins/typescript/LSAndTSDocResolver';
 import { __resetCache } from '../../../../src/plugins/typescript/service';
 import { pathToUrl } from '../../../../src/utils';
+import { serviceWarmup } from '../test-utils';
 
 const testDir = path.join(__dirname, '..');
+const hoverTestDir = path.join(testDir, 'testfiles', 'hover');
 
-describe('HoverProvider', () => {
+describe('HoverProvider', function () {
+    serviceWarmup(this, hoverTestDir, pathToUrl(testDir));
+
     function getFullPath(filename: string) {
-        return path.join(testDir, 'testfiles', 'hover', filename);
+        return path.join(hoverTestDir, filename);
     }
 
     function setup(filename: string) {
@@ -28,7 +32,7 @@ describe('HoverProvider', () => {
 
         function openDoc(filename: string) {
             const filePath = getFullPath(filename);
-            const doc = docManager.openDocument(<any>{
+            const doc = docManager.openClientDocument(<any>{
                 uri: pathToUrl(filePath),
                 text: ts.sys.readFile(filePath) || ''
             });

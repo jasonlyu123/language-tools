@@ -15,17 +15,20 @@ import { CodeActionsProviderImpl } from '../../../../src/plugins/typescript/feat
 import { CompletionsProviderImpl } from '../../../../src/plugins/typescript/features/CompletionProvider';
 import { LSAndTSDocResolver } from '../../../../src/plugins/typescript/LSAndTSDocResolver';
 import { pathToUrl } from '../../../../src/utils';
+import { serviceWarmup } from '../test-utils';
 
 const testFilesDir = join(__dirname, '..', 'testfiles', 'preferences');
 
-describe('ts user preferences', () => {
+describe('ts user preferences', function () {
+    serviceWarmup(this, testFilesDir);
+
     function setup(filename: string) {
         const docManager = new DocumentManager(
             (textDocument) => new Document(textDocument.uri, textDocument.text)
         );
 
         const filePath = join(testFilesDir, filename);
-        const document = docManager.openDocument(<any>{
+        const document = docManager.openClientDocument(<any>{
             uri: pathToUrl(filePath),
             text: ts.sys.readFile(filePath) || ''
         });

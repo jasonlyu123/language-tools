@@ -61,6 +61,7 @@ export interface DocumentSnapshot extends ts.IScriptSnapshot, DocumentMapper {
      * Convenience function for getText(0, getLength())
      */
     getFullText(): string;
+    isOpenedInClient(): boolean;
 }
 
 /**
@@ -130,7 +131,15 @@ export namespace DocumentSnapshot {
         if (!normalizedPath.endsWith('node_modules/svelte/types/runtime/ambient.d.ts')) {
             originalText = tsSystem.readFile(filePath) || '';
         }
-        if (
+
+        if (normalizedPath.endsWith('node_modules/svelte/types/index.d.ts')) {
+            const startIdx = originalText.indexOf(`declare module '*.svelte' {`);
+            const endIdx = originalText.indexOf(`}`, originalText.indexOf(';', startIdx)) + 1;
+            originalText =
+                originalText.substring(0, startIdx) +
+                ' '.repeat(endIdx - startIdx) +
+                originalText.substring(endIdx);
+        } else if (
             normalizedPath.endsWith('svelte2tsx/svelte-shims.d.ts') ||
             normalizedPath.endsWith('svelte-check/dist/src/svelte-shims.d.ts')
         ) {
@@ -364,6 +373,10 @@ export class SvelteDocumentSnapshot implements DocumentSnapshot {
         return this.url;
     }
 
+    isOpenedInClient() {
+        return this.parent.openedByClient;
+    }
+
     private getLineOffsets() {
         if (!this.lineOffsets) {
             this.lineOffsets = getLineOffsets(this.text);
@@ -419,6 +432,12 @@ export class JSOrTSDocumentSnapshot extends IdentityMapper implements DocumentSn
     private paramsPath = 'src/params';
     private serverHooksPath = 'src/hooks.server';
     private clientHooksPath = 'src/hooks.client';
+
+    private openedByClient = false;
+
+    isOpenedInClient(): boolean {
+        return this.openedByClient;
+    }
 
     constructor(public version: number, public readonly filePath: string, private text: string) {
         super(pathToUrl(filePath));
@@ -508,6 +527,8 @@ export class JSOrTSDocumentSnapshot extends IdentityMapper implements DocumentSn
         this.version++;
         this.lineOffsets = undefined;
         this.internalLineOffsets = undefined;
+        // only client can have incremental updates
+        this.openedByClient = true;
     }
 
     protected getLineOffsets() {

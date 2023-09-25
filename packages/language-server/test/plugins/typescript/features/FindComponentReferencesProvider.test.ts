@@ -6,15 +6,18 @@ import { LSConfigManager } from '../../../../src/ls-config';
 import { FindComponentReferencesProviderImpl } from '../../../../src/plugins/typescript/features/FindComponentReferencesProvider';
 import { LSAndTSDocResolver } from '../../../../src/plugins/typescript/LSAndTSDocResolver';
 import { pathToUrl } from '../../../../src/utils';
+import { serviceWarmup } from '../test-utils';
 
-const testDir = path.join(__dirname, '..');
+const testDir = path.join(__dirname, '..', 'testfiles');
 
-describe('FindComponentReferencesProvider', () => {
+describe('FindComponentReferencesProvider', function () {
+    serviceWarmup(this, testDir);
+
     function getFullPath(filename: string) {
-        return path.join(testDir, 'testfiles', filename);
+        return path.join(testDir, filename);
     }
     function getUri(filename: string) {
-        const filePath = path.join(testDir, 'testfiles', filename);
+        const filePath = path.join(testDir, filename);
         return pathToUrl(filePath);
     }
 
@@ -24,14 +27,18 @@ describe('FindComponentReferencesProvider', () => {
         );
         const lsConfigManager = new LSConfigManager();
 
-        const lsAndTsDocResolver = new LSAndTSDocResolver(docManager, [testDir], lsConfigManager);
+        const lsAndTsDocResolver = new LSAndTSDocResolver(
+            docManager,
+            [pathToUrl(testDir)],
+            lsConfigManager
+        );
         const provider = new FindComponentReferencesProviderImpl(lsAndTsDocResolver);
         const document = openDoc(filename);
         return { provider, document, openDoc, lsConfigManager };
 
         function openDoc(filename: string) {
             const filePath = getFullPath(filename);
-            const doc = docManager.openDocument(<any>{
+            const doc = docManager.openClientDocument(<any>{
                 uri: pathToUrl(filePath),
                 text: ts.sys.readFile(filePath) || ''
             });
@@ -43,6 +50,7 @@ describe('FindComponentReferencesProvider', () => {
         const { provider, document, openDoc } = setup('find-component-references-child.svelte');
         //Make known all the associated files
         openDoc('find-component-references-parent.svelte');
+        openDoc('find-component-references-parent2.svelte');
 
         const results = await provider.findComponentReferences(document.uri.toString());
 
@@ -98,6 +106,19 @@ describe('FindComponentReferencesProvider', () => {
                     }
                 },
                 uri: getUri('find-component-references-parent.svelte')
+            },
+            {
+                range: {
+                    start: {
+                        line: 1,
+                        character: 9
+                    },
+                    end: {
+                        line: 1,
+                        character: 19
+                    }
+                },
+                uri: getUri('find-component-references-parent2.svelte')
             }
         ]);
     });

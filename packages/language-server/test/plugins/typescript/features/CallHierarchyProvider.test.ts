@@ -13,11 +13,13 @@ import { CallHierarchyProviderImpl } from '../../../../src/plugins/typescript/fe
 import { LSAndTSDocResolver } from '../../../../src/plugins/typescript/LSAndTSDocResolver';
 import { __resetCache } from '../../../../src/plugins/typescript/service';
 import { pathToUrl } from '../../../../src/utils';
+import { serviceWarmup } from '../test-utils';
 
 const testDir = path.join(__dirname, '..');
 
-describe('CallHierarchyProvider', () => {
+describe('CallHierarchyProvider', function () {
     const callHierarchyTestDirRelative = path.join('testfiles', 'call-hierarchy');
+    serviceWarmup(this, path.join(testDir, callHierarchyTestDirRelative), pathToUrl(testDir));
 
     function getFullPath(filename: string) {
         return path.join(testDir, 'testfiles', 'call-hierarchy', filename);
@@ -44,7 +46,7 @@ describe('CallHierarchyProvider', () => {
         );
         const provider = new CallHierarchyProviderImpl(lsAndTsDocResolver, workspaceUris);
         const filePath = getFullPath(filename);
-        const document = docManager.openDocument(<any>{
+        const document = docManager.openClientDocument(<any>{
             uri: pathToUrl(filePath),
             text: harmonizeNewLines(ts.sys.readFile(filePath) || '')
         });

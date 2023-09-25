@@ -1,4 +1,4 @@
-import { dirname, resolve } from 'path';
+import { dirname, join, resolve } from 'path';
 import { decorateLanguageService, isPatched } from './language-service';
 import { Logger } from './logger';
 import { patchModuleLoader } from './module-loader';
@@ -53,6 +53,19 @@ function init(modules: { typescript: typeof ts }): ts.server.PluginModule {
             const normalizedPath = fileName.replace(/\\/g, '/');
             if (normalizedPath.endsWith('node_modules/svelte/types/runtime/ambient.d.ts')) {
                 return modules.typescript.ScriptSnapshot.fromString('');
+            } else if (normalizedPath.endsWith('node_modules/svelte/types/index.d.ts')) {
+                const snapshot = getScriptSnapshot(fileName);
+                if (snapshot) {
+                    const originalText = snapshot.getText(0, snapshot.getLength());
+                    const startIdx = originalText.indexOf(`declare module '*.svelte' {`);
+                    const endIdx =
+                        originalText.indexOf(`}`, originalText.indexOf(';', startIdx)) + 1;
+                    return modules.typescript.ScriptSnapshot.fromString(
+                        originalText.substring(0, startIdx) +
+                            ' '.repeat(endIdx - startIdx) +
+                            originalText.substring(endIdx)
+                    );
+                }
             } else if (normalizedPath.endsWith('svelte2tsx/svelte-jsx.d.ts')) {
                 // Remove the dom lib reference to not load these ambient types in case
                 // the user has a tsconfig.json with different lib settings like in
@@ -121,7 +134,9 @@ function init(modules: { typescript: typeof ts }): ts.server.PluginModule {
 
         configManager.onConfigurationChanged(() => {
             // enabling/disabling the plugin means TS has to recompute stuff
-            info.languageService.cleanupSemanticCache();
+            // don't clear semantic cache here
+            // typescript now expected the program updates to be completely in their control
+            // doing so will result in a crash
             info.project.markAsDirty();
 
             // updateGraph checks for new root files
@@ -177,10 +192,22 @@ function init(modules: { typescript: typeof ts }): ts.server.PluginModule {
             configFilePath ? { paths: [configFilePath] } : undefined
         );
         const VERSION = require(sveltePath).VERSION;
+        const isSvelte3 = VERSION.split('.')[0] === '3';
+        const svelteHtmlDeclaration = isSvelte3
+            ? undefined
+            : join(dirname(sveltePath), 'svelte-html.d.ts');
+        const svelteHtmlFallbackIfNotExist =
+            svelteHtmlDeclaration && modules.typescript.sys.fileExists(svelteHtmlDeclaration)
+                ? svelteHtmlDeclaration
+                : './svelte-jsx-v4.d.ts';
         const svelteTsxFiles = (
-            VERSION.split('.')[0] === '3'
+            isSvelte3
                 ? ['./svelte-shims.d.ts', './svelte-jsx.d.ts', './svelte-native-jsx.d.ts']
-                : ['./svelte-shims-v4.d.ts', './svelte-jsx-v4.d.ts', './svelte-native-jsx.d.ts']
+                : [
+                      './svelte-shims-v4.d.ts',
+                      svelteHtmlFallbackIfNotExist,
+                      './svelte-native-jsx.d.ts'
+                  ]
         ).map((f) => modules.typescript.sys.resolvePath(resolve(svelteTsPath, f)));
 
         resolvedSvelteTsxFiles = svelteTsxFiles;
@@ -194,7 +221,9 @@ function init(modules: { typescript: typeof ts }): ts.server.PluginModule {
     }
 
     function onConfigurationChanged(config: Configuration) {
-        configManager.updateConfigFromPluginConfig(config);
+        if (configManager.isConfigChanged(config)) {
+            configManager.updateConfigFromPluginConfig(config);
+        }
     }
 
     /**

@@ -189,7 +189,7 @@ export function activateSvelteLanguageServer(context: ExtensionContext) {
                 html: workspace.getConfiguration('html')
             },
             dontFilterIncompleteCompletions: true, // VSCode filters client side and is smarter at it than us
-            isTrusted: (workspace as any).isTrusted
+            isTrusted: workspace.isTrusted
         }
     };
 
@@ -445,6 +445,7 @@ function addCompilePreviewCommand(getLS: () => LanguageClient, context: Extensio
     const compiledCodeContentProvider = new CompiledCodeContentProvider(getLS);
 
     context.subscriptions.push(
+        // Register the content provider for "svelte-compiled://" files
         workspace.registerTextDocumentContentProvider(
             CompiledCodeContentProvider.scheme,
             compiledCodeContentProvider
@@ -458,15 +459,17 @@ function addCompilePreviewCommand(getLS: () => LanguageClient, context: Extensio
                 return;
             }
 
-            const uri = editor.document.uri;
-            const svelteUri = CompiledCodeContentProvider.toSvelteSchemeUri(uri);
             window.withProgress(
-                { location: ProgressLocation.Window, title: 'Compiling..' },
+                { location: ProgressLocation.Window, title: 'Compiling...' },
                 async () => {
-                    return await window.showTextDocument(svelteUri, {
-                        preview: true,
-                        viewColumn: ViewColumn.Beside
-                    });
+                    // Open a new preview window for the compiled code
+                    return await window.showTextDocument(
+                        CompiledCodeContentProvider.previewWindowUri,
+                        {
+                            preview: true,
+                            viewColumn: ViewColumn.Beside
+                        }
+                    );
                 }
             );
         })
