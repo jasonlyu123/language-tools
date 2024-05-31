@@ -1,8 +1,10 @@
-import { ConfigLoader } from '../../../src/lib/documents/configLoader';
+import { ConfigLoader, FSProvider } from '../../../src/lib/documents/configLoader';
 import path from 'path';
 import { pathToFileURL, URL } from 'url';
 import assert from 'assert';
 import { spy } from 'sinon';
+import _fs, { Dirent } from 'fs';
+import fastGlob from 'fast-glob';
 
 describe('ConfigLoader', () => {
     function configFrom(path: string) {
@@ -30,10 +32,16 @@ describe('ConfigLoader', () => {
         assert.deepStrictEqual(await configLoader.awaitConfig(filePath), configFrom(configPath));
     }
 
+    const defaultFsMock: FSProvider = {
+        existsSync: () => true,
+        readdirSync: () => [],
+        realpathSync: (p) => p.toString()
+    };
+
     it('should load all config files below and the one inside/above given directory', async () => {
         const configLoader = new ConfigLoader(
             (() => ['svelte.config.js', 'below/svelte.config.js']) as any,
-            { existsSync: () => true },
+            { ...defaultFsMock, existsSync: () => true },
             path,
             (module: URL) => Promise.resolve({ default: { preprocess: module.toString() } })
         );
@@ -61,10 +69,73 @@ describe('ConfigLoader', () => {
         );
     });
 
+    it('skip circular symlink', async () => {
+        const configLoader = new ConfigLoader(
+            fastGlob.sync,
+            { readdirSync, existsSync: () => true, realpathSync },
+            path,
+            (module: URL) => Promise.resolve({ default: { preprocess: module.toString() } })
+        );
+        await configLoader.loadConfigs(normalizePath('/some/path'));
+
+        await assertFindsConfig(
+            configLoader,
+            '/some/path/comp.svelte',
+            '/some/path/svelte.config.js'
+        );
+
+        await assertFindsConfig(
+            configLoader,
+            '/some/path/circular/comp.svelte',
+            '/some/path/svelte.config.js'
+        );
+
+        function readdirSync(dir: string): string[];
+        function readdirSync(dir: string, options: { withFileTypes: true }): Dirent[];
+        function readdirSync(dir: string, options?: { withFileTypes: true }): Dirent[] | string[] {
+            const loopsMoreThanOnce = dir.replace('circular', '').includes('circular');
+            if (loopsMoreThanOnce) {
+                return [];
+            }
+
+            const names = ['svelte.config.js', 'circular'];
+            return options?.withFileTypes
+                ? names.map(
+                      (name) =>
+                          ({
+                              isSymbolicLink() {
+                                  return name === 'circular' || dir.includes('circular');
+                              },
+                              isDirectory() {
+                                  return name === 'circular';
+                              },
+                              isFile() {
+                                  return name === 'svelte.config.js';
+                              },
+                              name
+                          }) as Dirent
+                  )
+                : names;
+        }
+
+        function realpathSync(p: string) {
+            let result = p;
+            if (p.endsWith('circular')) {
+                result = '/some/path';
+            }
+            if (p.endsWith('svelte.config.js')) {
+                result = '/some/path/svelte.config.js';
+            }
+
+            return normalizePath(result);
+        }
+    });
+
     it('finds first above if none found inside/below directory', async () => {
         const configLoader = new ConfigLoader(
             () => [],
             {
+                ...defaultFsMock,
                 existsSync: (p) =>
                     typeof p === 'string' && p.endsWith(path.join('some', 'svelte.config.js'))
             },
@@ -79,7 +150,7 @@ describe('ConfigLoader', () => {
     it('adds fallback if no config found', async () => {
         const configLoader = new ConfigLoader(
             () => [],
-            { existsSync: () => false },
+            { ...defaultFsMock, existsSync: () => false },
             path,
             (module: URL) => Promise.resolve({ default: { preprocess: module.toString() } })
         );
@@ -108,6 +179,7 @@ describe('ConfigLoader', () => {
                 }
             }) as any,
             {
+                ...defaultFsMock,
                 existsSync: (p) =>
                     typeof p === 'string' &&
                     p.endsWith(path.join('some', 'path', 'svelte.config.js'))
@@ -142,7 +214,7 @@ describe('ConfigLoader', () => {
     it('can deal with missing config', () => {
         const configLoader = new ConfigLoader(
             () => [],
-            { existsSync: () => false },
+            { ...defaultFsMock, existsSync: () => false },
             path,
             () => Promise.resolve('unimportant')
         );
@@ -155,7 +227,7 @@ describe('ConfigLoader', () => {
     it('should await config', async () => {
         const configLoader = new ConfigLoader(
             () => [],
-            { existsSync: () => true },
+            { ...defaultFsMock, existsSync: () => true },
             path,
             (module: URL) => Promise.resolve({ default: { preprocess: module.toString() } })
         );
@@ -169,7 +241,7 @@ describe('ConfigLoader', () => {
         const moduleLoader = spy();
         const configLoader = new ConfigLoader(
             () => [],
-            { existsSync: () => true },
+            { ...defaultFsMock, existsSync: () => true },
             path,
             moduleLoader
         );

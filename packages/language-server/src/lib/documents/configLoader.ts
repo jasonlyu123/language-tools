@@ -4,9 +4,9 @@ import { CompileOptions } from 'svelte/types/compiler/interfaces';
 // @ts-ignore
 import { PreprocessorGroup } from 'svelte/types/compiler/preprocess';
 import { importSveltePreprocess } from '../../importPackage';
-import _glob from 'fast-glob';
+import _glob, { FileSystemAdapter } from 'fast-glob';
 import _path from 'path';
-import _fs from 'fs';
+import _fs, { Dirent } from 'fs';
 import { pathToFileURL, URL } from 'url';
 import { FileMap } from './fileCollection';
 
@@ -46,6 +46,11 @@ const _dynamicImport = new Function('modulePath', 'return import(modulePath)') a
     modulePath: URL
 ) => Promise<any>;
 
+export type FSProvider = {
+    existsSync: (path: string) => boolean;
+    realpathSync: (path: string) => string;
+} & Pick<FileSystemAdapter, 'readdirSync'>;
+
 /**
  * Loads svelte.config.{js,cjs,mjs} files. Provides both a synchronous and asynchronous
  * interface to get a config file because snapshots need access to it synchronously.
@@ -61,7 +66,7 @@ export class ConfigLoader {
 
     constructor(
         private globSync: typeof _glob.sync,
-        private fs: Pick<typeof _fs, 'existsSync'>,
+        private fs: FSProvider,
         private path: Pick<typeof _path, 'dirname' | 'relative' | 'join'>,
         private dynamicImport: typeof _dynamicImport
     ) {}
@@ -87,8 +92,11 @@ export class ConfigLoader {
                 cwd: directory,
                 // the second pattern is necessary because else fast-glob treats .tmp/../node_modules/.. as a valid match for some reason
                 ignore: ['**/node_modules/**', '**/.*/**'],
-                onlyFiles: true
+                onlyFiles: true,
+
+                fs: this.preventCircularSymlink(directory)
             });
+
             const someConfigIsImmediateFileInDirectory =
                 pathResults.length > 0 && pathResults.some((res) => !this.path.dirname(res));
             if (!someConfigIsImmediateFileInDirectory) {
@@ -114,6 +122,60 @@ export class ConfigLoader {
             await Promise.all(promises);
         } catch (e) {
             Logger.error(e);
+        }
+    }
+
+    private preventCircularSymlink(root: string): FSProvider {
+        const join = this.path.join;
+        const fs = this.fs;
+        const seenPaths = new Set<string>();
+        seenPaths.add(this.fs.realpathSync(root));
+        return {
+            ...this.fs,
+            readdirSync
+        };
+        function readdirSync(path: string): string[];
+        function readdirSync(path: string, options: { withFileTypes: true }): _fs.Dirent[];
+        function readdirSync(
+            path: string,
+            options?: { withFileTypes: true }
+        ): _fs.Dirent[] | string[] {
+            return options?.withFileTypes
+                ? filterSeenDirent(path, fs.readdirSync(path, options))
+                : filterSeenPaths(path, fs.readdirSync(path));
+        }
+
+        function filterSeenPaths(dirname: string, paths: string[]): string[] {
+            // just in case, the actual code path should never reach this
+            const result: string[] = [];
+            for (const name of paths) {
+                const path = join(dirname, name);
+                const realpath = fs.realpathSync(path);
+                if (seenPaths.has(realpath)) {
+                    continue;
+                }
+                seenPaths.add(realpath);
+                result.push(name);
+            }
+            return result;
+        }
+
+        function filterSeenDirent(dirname: string, paths: Dirent[]): Dirent[] {
+            const result: Dirent[] = [];
+            for (const info of paths) {
+                const path = join(dirname, info.name);
+                // fast-glob called isSymbolicLink afterwards so we cache the result
+                const isSymbolicLink = info.isSymbolicLink();
+                info.isSymbolicLink = () => isSymbolicLink;
+                const realpath = info.isSymbolicLink() ? fs.realpathSync(path) : path;
+
+                if (seenPaths.has(realpath)) {
+                    continue;
+                }
+                seenPaths.add(realpath);
+                result.push(info);
+            }
+            return result;
         }
     }
 
