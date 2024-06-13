@@ -2154,4 +2154,171 @@ describe('CodeActionsProvider', function () {
     after(() => {
         __resetCache();
     });
+
+    // -------------------- put tests that only run in Svelte 5 below this line and everything else above --------------------
+    if (!isSvelte5Plus) return;
+
+    it('provides quickfix for missing snippet', async () => {
+        if (!isSvelte5Plus) {
+            return;
+        }
+        const { provider, document } = setup('fix-missing-snippet.svelte');
+
+        const codeActions = await provider.getCodeActions(
+            document,
+            Range.create(Position.create(3, 9), Position.create(3, 12)),
+            {
+                diagnostics: [
+                    {
+                        code: 2304,
+                        message: "Cannot find name 'hi2'.",
+                        range: Range.create(Position.create(3, 9), Position.create(3, 12)),
+                        source: 'ts'
+                    }
+                ],
+                only: [CodeActionKind.QuickFix]
+            }
+        );
+
+        (<TextDocumentEdit>codeActions[0]?.edit?.documentChanges?.[0])?.edits.forEach(
+            (edit) => (edit.newText = harmonizeNewLines(edit.newText))
+        );
+
+        assert.deepStrictEqual(codeActions, [
+            {
+                edit: {
+                    documentChanges: [
+                        {
+                            edits: [
+                                {
+                                    newText:
+                                        `\n{#snippet hi2(arg0: string)}\n` +
+                                        `${indent}\n` +
+                                        `{/snippet}\n`,
+                                    range: {
+                                        start: {
+                                            character: 17,
+                                            line: 3
+                                        },
+                                        end: {
+                                            character: 17,
+                                            line: 3
+                                        }
+                                    }
+                                }
+                            ],
+                            textDocument: {
+                                uri: getUri('fix-missing-snippet.svelte'),
+                                version: null
+                            }
+                        }
+                    ]
+                },
+                kind: CodeActionKind.QuickFix,
+                title: "Add missing snippet declaration 'hi2'"
+            }
+        ]);
+    });
+
+    it('provides fix-all quickfix for missing snippet', async () => {
+        if (!isSvelte5Plus) {
+            return;
+        }
+        const { provider, document } = setup('fix-all-missing-snippet.svelte');
+
+        const codeActions = await provider.getCodeActions(
+            document,
+            Range.create(Position.create(4, 9), Position.create(4, 12)),
+            {
+                diagnostics: [
+                    {
+                        code: 2304,
+                        message: "Cannot find name 'foo'.",
+                        range: Range.create(Position.create(1, 4), Position.create(1, 7)),
+                        source: 'ts'
+                    },
+                    {
+                        code: 2304,
+                        message: "Cannot find name 'hi3'.",
+                        range: Range.create(Position.create(4, 9), Position.create(4, 12)),
+                        source: 'ts'
+                    },
+                    {
+                        code: 2304,
+                        message: "Cannot find name 'hi2'.",
+                        range: Range.create(Position.create(5, 9), Position.create(5, 12)),
+                        source: 'ts'
+                    }
+                ],
+                only: [CodeActionKind.QuickFix]
+            }
+        );
+
+        const fixAll = codeActions.find((action) => action.data);
+        const resolvedFixAll = await provider.resolveCodeAction(document, fixAll!);
+
+        (<TextDocumentEdit>resolvedFixAll?.edit?.documentChanges?.[0])?.edits.forEach(
+            (edit) => (edit.newText = harmonizeNewLines(edit.newText))
+        );
+
+        assert.deepStrictEqual(fixAll?.edit, {
+            documentChanges: [
+                {
+                    edits: [
+                        {
+                            newText:
+                                `\n\n${indent}function foo() {\n` +
+                                `${indent}${indent}throw new Error("Function not implemented.");\n` +
+                                `${indent}}\n`,
+                            range: {
+                                start: {
+                                    character: 0,
+                                    line: 2
+                                },
+                                end: {
+                                    character: 0,
+                                    line: 2
+                                }
+                            }
+                        },
+
+                        {
+                            newText:
+                                `\n{#snippet hi3(arg0: { hi: string; })}\n` +
+                                `${indent}\n` +
+                                `{/snippet}\n`,
+                            range: {
+                                start: {
+                                    character: 17,
+                                    line: 5
+                                },
+                                end: {
+                                    character: 17,
+                                    line: 5
+                                }
+                            }
+                        },
+                        {
+                            newText:
+                                `\n{#snippet hi2(arg0: string)}\n` + `${indent}\n` + `{/snippet}\n`,
+                            range: {
+                                start: {
+                                    character: 17,
+                                    line: 5
+                                },
+                                end: {
+                                    character: 17,
+                                    line: 5
+                                }
+                            }
+                        }
+                    ],
+                    textDocument: {
+                        uri: getUri('fix-all-missing-snippet.svelte'),
+                        version: null
+                    }
+                }
+            ]
+        });
+    });
 });

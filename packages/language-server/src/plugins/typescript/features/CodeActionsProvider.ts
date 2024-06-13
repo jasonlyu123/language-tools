@@ -736,6 +736,15 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
                                       }
                                   )?.range;
 
+                            if (checkRange && this.isRenderSnippetCall(checkRange, document)) {
+                                return this.rewriteToSnippet(
+                                    fix,
+                                    edit,
+                                    formatCodeBasis,
+                                    document,
+                                    checkRange
+                                );
+                            }
                             originalRange = this.checkEndOfFileCodeInsert(
                                 originalRange,
                                 checkRange,
@@ -743,7 +752,11 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
                             );
 
                             // ts doesn't add base indent to the first line
-                            if (formatCodeSettings.baseIndentSize) {
+                            // the quick fix might add imports, don't add base indent to imports
+                            if (
+                                formatCodeSettings.baseIndentSize &&
+                                edit.newText.includes('function')
+                            ) {
                                 const emptyLine = formatCodeBasis.newLine.repeat(2);
                                 edit.newText =
                                     emptyLine +
@@ -1260,6 +1273,48 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
         }
 
         return true;
+    }
+
+    private isRenderSnippetCall(checkRange: Range, document: Document) {
+        const beforeFunctionCall = document
+            .getText()
+            .slice(0, document.offsetAt(checkRange.start))
+            .trimEnd();
+        const renderKeyword = 'render';
+
+        return (
+            beforeFunctionCall.endsWith(renderKeyword) &&
+            beforeFunctionCall.slice(0, -renderKeyword.length).trimEnd().endsWith('@')
+        );
+    }
+
+    private rewriteToSnippet(
+        fix: ts.CodeFixAction,
+        edit: ts.TextChange,
+        formatCodeBasis: FormatCodeBasis,
+        document: Document,
+        checkRange: Range
+    ): TextEdit | undefined {
+        const orgName = document.getText(checkRange);
+        if (orgName === 'children') {
+            // most likely want to get it from the props instead
+            return;
+        }
+
+        const ast = ts.createSourceFile('index.ts', edit.newText, ts.ScriptTarget.Latest, true);
+        const fun = ast.statements.find(ts.isFunctionDeclaration);
+        if (fun?.name?.getText() !== orgName) {
+            return;
+        }
+
+        fix.description = fix.description.replace('function', 'snippet');
+        const args = fun.parameters.map((p) => p.getText()).join(', ');
+
+        const { newLine, indent } = formatCodeBasis;
+        const newText = `${newLine}{#snippet ${orgName}(${args})}${newLine}${indent}${newLine}{/snippet}${newLine}`;
+        const fileEnd = document.positionAt(document.getTextLength());
+
+        return TextEdit.insert(fileEnd, newText);
     }
 
     private async getApplicableRefactors(
