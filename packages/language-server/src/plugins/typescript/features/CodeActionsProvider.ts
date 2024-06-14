@@ -46,7 +46,6 @@ import {
 import { CompletionsProviderImpl } from './CompletionProvider';
 import {
     findClosestContainingNode,
-    findContainingNode,
     FormatCodeBasis,
     getFormatCodeBasis,
     getNewScriptStartTag,
@@ -75,7 +74,8 @@ interface CustomFixCannotFindNameInfo extends ts.CodeFixAction {
 
 interface QuickFixConversionOptions {
     fix: ts.CodeFixAction | CustomFixCannotFindNameInfo;
-    snapshots: SnapshotMap;
+    change: ts.FileTextChanges;
+    snapshot: DocumentSnapshot;
     document: Document;
     formatCodeSettings: ts.FormatCodeSettings;
     formatCodeBasis: FormatCodeBasis;
@@ -219,26 +219,27 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
         }
 
         const snapshots = new SnapshotMap(this.lsAndTsDocResolver);
-        const fixActions: ts.CodeFixAction[] = [
-            {
-                fixName: codeAction.data.fixName,
-                changes: Array.from(fix.changes),
-                description: ''
-            }
-        ];
+        const fixAction: ts.CodeFixAction = {
+            fixName: codeAction.data.fixName,
+            changes: Array.from(fix.changes),
+            description: ''
+        };
 
-        const documentChangesPromises = fixActions.map((fix) =>
-            this.convertAndFixCodeFixAction({
-                document,
-                fix,
-                formatCodeBasis,
-                formatCodeSettings,
-                getDiagnostics,
-                snapshots,
-                skipAddScriptTag: true
+        const changes = await this.retrieveSnapshot(fixAction, snapshots);
+        const documentChanges = changes
+            .map(([change, snapshot]) => {
+                return this.convertAndFixFileTextChanges({
+                    document,
+                    fix: fixAction,
+                    change,
+                    formatCodeBasis,
+                    formatCodeSettings,
+                    getDiagnostics,
+                    snapshot,
+                    skipAddScriptTag: true
+                });
             })
-        );
-        const documentChanges = (await Promise.all(documentChangesPromises)).flat();
+            .filter(isNotNullOrUndefined);
 
         if (cancellationToken?.isCancellationRequested) {
             return codeAction;
@@ -255,6 +256,13 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
         return codeAction;
     }
 
+    private async retrieveSnapshot(fix: ts.CodeFixAction, snapshots: SnapshotMap) {
+        return Promise.all(
+            fix.changes.map(
+                async (change) => [change, await snapshots.retrieve(change.fileName)] as const
+            )
+        );
+    }
     /**
      * Do not use this in regular code action
      * This'll cause TypeScript to rebuild and invalidate caches every time. It'll be slow
@@ -617,14 +625,20 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
         snapshots.set(tsDoc.filePath, tsDoc);
 
         const codeActionsPromises = codeFixes.map(async (fix) => {
-            const documentChanges = await this.convertAndFixCodeFixAction({
-                fix,
-                snapshots,
-                document,
-                formatCodeSettings,
-                formatCodeBasis,
-                getDiagnostics: () => context.diagnostics
-            });
+            const changes = await this.retrieveSnapshot(fix, snapshots);
+            const documentChanges = changes
+                .map(([change, snapshot]) => {
+                    return this.convertAndFixFileTextChanges({
+                        fix,
+                        change,
+                        snapshot,
+                        document,
+                        formatCodeSettings,
+                        formatCodeBasis,
+                        getDiagnostics: () => context.diagnostics
+                    });
+                })
+                .filter(isNotNullOrUndefined);
 
             const codeAction = CodeAction.create(
                 fix.description,
@@ -649,10 +663,12 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
             return [];
         }
 
-        const codeActionsNotFilteredOut = codeActions.filter(({ codeAction }) =>
-            codeAction.edit?.documentChanges?.every(
-                (change) => (<TextDocumentEdit>change).edits.length > 0
-            )
+        const codeActionsNotFilteredOut = codeActions.filter(
+            ({ codeAction }) =>
+                codeAction.edit?.documentChanges?.length &&
+                codeAction.edit?.documentChanges?.every(
+                    (change) => (<TextDocumentEdit>change).edits.length > 0
+                )
         );
 
         const fixAllActions = this.getFixAllActions(
@@ -666,154 +682,130 @@ export class CodeActionsProviderImpl implements CodeActionsProvider {
         return codeActionsNotFilteredOut.map(({ codeAction }) => codeAction).concat(fixAllActions);
     }
 
-    private async convertAndFixCodeFixAction({
+    private convertAndFixFileTextChanges({
         fix,
-        snapshots,
+        change,
+        snapshot,
         document,
         formatCodeSettings,
         formatCodeBasis,
         getDiagnostics,
         skipAddScriptTag
-    }: QuickFixConversionOptions) {
-        const documentChangesPromises = fix.changes.map(async (change) => {
-            const snapshot = await snapshots.retrieve(change.fileName);
-            return TextDocumentEdit.create(
-                OptionalVersionedTextDocumentIdentifier.create(pathToUrl(change.fileName), null),
-                change.textChanges
-                    .map((edit) => {
-                        if (
-                            fix.fixName === FIX_IMPORT_FIX_NAME &&
-                            snapshot instanceof SvelteDocumentSnapshot
-                        ) {
-                            const namePosition = 'position' in fix ? fix.position : undefined;
-                            const startPos =
-                                namePosition ??
-                                this.findDiagnosticForImportFix(document, edit, getDiagnostics())
-                                    ?.range?.start ??
-                                Position.create(0, 0);
+    }: QuickFixConversionOptions): TextDocumentEdit | undefined {
+        const edits = change.textChanges.map((edit) => {
+            if (fix.fixName === FIX_IMPORT_FIX_NAME && snapshot instanceof SvelteDocumentSnapshot) {
+                const namePosition = 'position' in fix ? fix.position : undefined;
+                const startPos =
+                    namePosition ??
+                    this.findDiagnosticForImportFix(document, edit, getDiagnostics())?.range
+                        ?.start ??
+                    Position.create(0, 0);
 
-                            return this.completionProvider.codeActionChangeToTextEdit(
-                                document,
-                                snapshot,
-                                edit,
-                                true,
-                                startPos,
-                                formatCodeBasis.newLine,
-                                undefined,
-                                skipAddScriptTag
-                            );
-                        }
+                return this.completionProvider.codeActionChangeToTextEdit(
+                    document,
+                    snapshot,
+                    edit,
+                    true,
+                    startPos,
+                    formatCodeBasis.newLine,
+                    undefined,
+                    skipAddScriptTag
+                );
+            }
 
-                        if (isTextSpanInGeneratedCode(snapshot.getFullText(), edit.span)) {
-                            return undefined;
-                        }
+            if (isTextSpanInGeneratedCode(snapshot.getFullText(), edit.span)) {
+                return undefined;
+            }
 
-                        let originalRange = mapRangeToOriginal(
-                            snapshot,
-                            convertRange(snapshot, edit.span)
-                        );
+            let originalRange = mapRangeToOriginal(snapshot, convertRange(snapshot, edit.span));
 
-                        if (fix.fixName === 'unusedIdentifier') {
-                            originalRange = this.checkRemoveImportCodeActionRange(
-                                edit,
-                                snapshot,
-                                originalRange
-                            );
-                        }
+            if (fix.fixName === 'unusedIdentifier') {
+                originalRange = this.checkRemoveImportCodeActionRange(
+                    edit,
+                    snapshot,
+                    originalRange
+                );
+            }
 
-                        if (fix.fixName === 'fixMissingFunctionDeclaration') {
-                            const position = 'position' in fix ? fix.position : undefined;
-                            const checkRange = position
-                                ? Range.create(position, position)
-                                : this.findDiagnosticForQuickFix(
-                                      document,
-                                      DiagnosticCode.CANNOT_FIND_NAME,
-                                      getDiagnostics(),
-                                      (possiblyIdentifier) => {
-                                          return edit.newText.includes(
-                                              'function ' + possiblyIdentifier + '('
-                                          );
-                                      }
-                                  )?.range;
+            if (fix.fixName === 'fixMissingFunctionDeclaration') {
+                const position = 'position' in fix ? fix.position : undefined;
+                const checkRange = position
+                    ? Range.create(position, position)
+                    : this.findDiagnosticForQuickFix(
+                          document,
+                          DiagnosticCode.CANNOT_FIND_NAME,
+                          getDiagnostics(),
+                          (possiblyIdentifier) => {
+                              return edit.newText.includes('function ' + possiblyIdentifier + '(');
+                          }
+                      )?.range;
 
-                            if (checkRange && this.isRenderSnippetCall(checkRange, document)) {
-                                return this.rewriteToSnippet(
-                                    fix,
-                                    edit,
-                                    formatCodeBasis,
-                                    document,
-                                    checkRange
-                                );
-                            }
-                            originalRange = this.checkEndOfFileCodeInsert(
-                                originalRange,
-                                checkRange,
-                                document
-                            );
+                if (checkRange && this.isRenderSnippetCall(checkRange, document)) {
+                    return this.rewriteToSnippet(fix, edit, formatCodeBasis, document, checkRange);
+                }
+                originalRange = this.checkEndOfFileCodeInsert(originalRange, checkRange, document);
 
-                            // ts doesn't add base indent to the first line
-                            // the quick fix might add imports, don't add base indent to imports
-                            if (
-                                formatCodeSettings.baseIndentSize &&
-                                edit.newText.includes('function')
-                            ) {
-                                const emptyLine = formatCodeBasis.newLine.repeat(2);
-                                edit.newText =
-                                    emptyLine +
-                                    formatCodeBasis.baseIndent +
-                                    edit.newText.trimLeft();
-                            }
-                        }
+                // ts doesn't add base indent to the first line
+                // the quick fix might add imports, don't add base indent to imports
+                if (formatCodeSettings.baseIndentSize && edit.newText.includes('function')) {
+                    const emptyLine = formatCodeBasis.newLine.repeat(2);
+                    edit.newText = emptyLine + formatCodeBasis.baseIndent + edit.newText.trimLeft();
+                }
+            }
 
-                        if (fix.fixName === 'disableJsDiagnostics') {
-                            if (edit.newText.includes('ts-nocheck')) {
-                                return this.checkTsNoCheckCodeInsert(document, edit);
-                            }
+            if (fix.fixName === 'disableJsDiagnostics') {
+                if (edit.newText.includes('ts-nocheck')) {
+                    return this.checkTsNoCheckCodeInsert(document, edit);
+                }
 
-                            return this.checkDisableJsDiagnosticsCodeInsert(
-                                originalRange,
-                                document,
-                                edit
-                            );
-                        }
+                return this.checkDisableJsDiagnosticsCodeInsert(originalRange, document, edit);
+            }
 
-                        if (fix.fixName === 'inferFromUsage') {
-                            originalRange = this.checkAddJsDocCodeActionRange(
-                                snapshot,
-                                originalRange,
-                                document
-                            );
-                        }
+            if (fix.fixName === 'inferFromUsage') {
+                originalRange = this.checkAddJsDocCodeActionRange(
+                    snapshot,
+                    originalRange,
+                    document
+                );
+            }
 
-                        if (fix.fixName === 'fixConvertConstToLet') {
-                            const offset = document.offsetAt(originalRange.start);
-                            const constOffset = document.getText().indexOf('const', offset);
-                            if (constOffset < 0) {
-                                return undefined;
-                            }
-                            const beforeConst = document.getText().slice(0, constOffset);
-                            if (
-                                beforeConst[beforeConst.length - 1] === '@' &&
-                                beforeConst
-                                    .slice(0, beforeConst.length - 1)
-                                    .trimEnd()
-                                    .endsWith('{')
-                            ) {
-                                return undefined;
-                            }
-                        }
+            if (fix.fixName === 'fixConvertConstToLet') {
+                const offset = document.offsetAt(originalRange.start);
+                const constOffset = document.getText().indexOf('const', offset);
+                if (constOffset < 0) {
+                    return undefined;
+                }
+                const beforeConst = document.getText().slice(0, constOffset);
+                if (
+                    beforeConst[beforeConst.length - 1] === '@' &&
+                    beforeConst
+                        .slice(0, beforeConst.length - 1)
+                        .trimEnd()
+                        .endsWith('{')
+                ) {
+                    return undefined;
+                }
+            }
 
-                        if (originalRange.start.line < 0 || originalRange.end.line < 0) {
-                            return undefined;
-                        }
+            if (originalRange.start.line < 0 || originalRange.end.line < 0) {
+                return undefined;
+            }
 
-                        return TextEdit.replace(originalRange, edit.newText);
-                    })
-                    .filter(isNotNullOrUndefined)
-            );
+            return TextEdit.replace(originalRange, edit.newText);
         });
-        const documentChanges = await Promise.all(documentChangesPromises);
-        return documentChanges;
+
+        const filteredEdits = edits.filter(isNotNullOrUndefined);
+
+        // if one of the edit is invalid, don't apply any of them
+        // ex: main change is filtered out, but the import for its type annotation is not
+        if (filteredEdits.length !== change.textChanges.length) {
+            return undefined;
+        }
+
+        return TextDocumentEdit.create(
+            OptionalVersionedTextDocumentIdentifier.create(pathToUrl(change.fileName), null),
+            filteredEdits
+        );
     }
 
     private findDiagnosticForImportFix(
