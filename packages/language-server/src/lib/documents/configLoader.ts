@@ -4,7 +4,6 @@ import { CompileOptions } from 'svelte/types/compiler/interfaces';
 // @ts-ignore
 import { PreprocessorGroup } from 'svelte/types/compiler/preprocess';
 import { importSveltePreprocess } from '../../importPackage';
-import _glob from 'fast-glob';
 import _path from 'path';
 import _fs from 'fs';
 import { pathToFileURL, URL } from 'url';
@@ -19,6 +18,13 @@ export type InternalPreprocessorGroup = PreprocessorGroup & {
         script?: string;
         style?: string;
     };
+};
+
+export type FSProvider = {
+    existsSync(path: string): boolean;
+    realpathSync(path: string): string;
+    readdirSync(path: string, options: { withFileTypes: true }): _fs.Dirent[];
+    lstatSync(path: string): _fs.Stats;
 };
 
 export interface SvelteConfig {
@@ -60,8 +66,7 @@ export class ConfigLoader {
     private disabled = false;
 
     constructor(
-        private globSync: typeof _glob.sync,
-        private fs: Pick<typeof _fs, 'existsSync'>,
+        private fs: FSProvider,
         private path: Pick<typeof _path, 'dirname' | 'relative' | 'join'>,
         private dynamicImport: typeof _dynamicImport
     ) {}
@@ -83,18 +88,14 @@ export class ConfigLoader {
         Logger.log('Trying to load configs for', directory);
 
         try {
-            const pathResults = this.globSync('**/svelte.config.{js,cjs,mjs}', {
-                cwd: directory,
-                // the second pattern is necessary because else fast-glob treats .tmp/../node_modules/.. as a valid match for some reason
-                ignore: ['**/node_modules/**', '**/.*/**'],
-                onlyFiles: true
-            });
+            const pathResults = this.searchDirectoryDownwards(directory);
             const someConfigIsImmediateFileInDirectory =
-                pathResults.length > 0 && pathResults.some((res) => !this.path.dirname(res));
+                pathResults.length > 0 &&
+                pathResults.some((res) => this.path.dirname(res) === directory);
             if (!someConfigIsImmediateFileInDirectory) {
                 const configPathUpwards = this.searchConfigPathUpwards(directory);
                 if (configPathUpwards) {
-                    pathResults.push(this.path.relative(directory, configPathUpwards));
+                    pathResults.push(configPathUpwards);
                 }
             }
             if (pathResults.length === 0) {
@@ -103,7 +104,6 @@ export class ConfigLoader {
             }
 
             const promises = pathResults
-                .map((pathResult) => this.path.join(directory, pathResult))
                 .filter((pathResult) => {
                     const config = this.configFiles.get(pathResult);
                     return !config || config.loadConfigError;
@@ -122,6 +122,54 @@ export class ConfigLoader {
         const path = this.path.join(directory, 'svelte.config.js');
         this.configFilesAsync.set(path, Promise.resolve(fallback));
         this.configFiles.set(path, fallback);
+    }
+
+    private searchDirectoryDownwards(directory: string) {
+        const seen = new Set<string>();
+        const searchFiles = new Set(['svelte.config.js', 'svelte.config.cjs', 'svelte.config.mjs']);
+        const result: string[] = [];
+
+        seen.add(this.fs.realpathSync(directory));
+        this.visitDirectory(directory, seen, searchFiles, result);
+
+        return result;
+    }
+
+    private visitDirectory(
+        directory: string,
+        seenDir: Set<string>,
+        searchFiles: Set<string>,
+        result: string[]
+    ) {
+        const files = this.fs.readdirSync(directory, { withFileTypes: true });
+
+        for (const file of files) {
+            const path = this.path.join(directory, file.name);
+
+            if (file.name === 'node_modules' || file.name[0] === '.') {
+                continue;
+            }
+
+            let realPath = path;
+            let stat: _fs.Stats | _fs.Dirent = file;
+            if (file.isSymbolicLink()) {
+                realPath = this.fs.realpathSync(path);
+                stat = this.fs.lstatSync(realPath);
+            }
+
+            if (seenDir.has(realPath)) {
+                continue;
+            }
+
+            if (stat.isFile() && searchFiles.has(file.name)) {
+                result.push(path);
+            }
+
+            seenDir.add(realPath);
+            if (stat.isDirectory()) {
+                this.visitDirectory(path, seenDir, searchFiles, result);
+            }
+        }
     }
 
     private searchConfigPathUpwards(path: string) {
@@ -270,4 +318,4 @@ export class ConfigLoader {
     }
 }
 
-export const configLoader = new ConfigLoader(_glob.sync, _fs, _path, _dynamicImport);
+export const configLoader = new ConfigLoader(_fs, _path, _dynamicImport);
