@@ -1,4 +1,8 @@
+import { activateTsVersionStatusItem, createLabsInfo } from '@volar/vscode';
+import * as volarLsp from '@volar/vscode/node';
 import * as path from 'path';
+import * as protocol from '@volar/language-server/protocol';
+import * as vscode from 'vscode';
 import {
     commands,
     ExtensionContext,
@@ -92,6 +96,8 @@ export function activateSvelteLanguageServer(context: ExtensionContext) {
 
     const runtimeConfig = workspace.getConfiguration('svelte.language-server');
 
+    const experimentalVolar = runtimeConfig.get<boolean>('experimental.volar.enable') ?? false;
+
     const { workspaceFolders } = workspace;
     const rootPath = Array.isArray(workspaceFolders) ? workspaceFolders[0].uri.fsPath : undefined;
 
@@ -105,12 +111,13 @@ export function activateSvelteLanguageServer(context: ExtensionContext) {
                 : path.join(rootPath as string, tempLsPath)
             : undefined;
 
-    const serverModule = require.resolve(lsPath || 'svelte-language-server/bin/server.js');
+    const bundledLsPath = experimentalVolar
+        ? 'svelte-language-server/dist/src/volarServer.js'
+        : 'svelte-language-server/bin/server.js';
+    const serverModule = require.resolve(lsPath || bundledLsPath);
     console.log('Loading server from ', serverModule);
 
-    // Add --experimental-modules flag for people using node 12 < version < 12.17
-    // Remove this in mid 2022 and bump vs code minimum required version to 1.55
-    const runExecArgv: string[] = ['--experimental-modules'];
+    const runExecArgv: string[] = [];
 
     const runtimeArgs = runtimeConfig.get<string[]>('runtime-args');
     if (runtimeArgs !== undefined) {
@@ -150,7 +157,9 @@ export function activateSvelteLanguageServer(context: ExtensionContext) {
     }
 
     const clientOptions: LanguageClientOptions = {
-        documentSelector: [{ scheme: 'file', language: 'svelte' }],
+        documentSelector: experimentalVolar
+            ? [{ language: 'svelte' }]
+            : [{ scheme: 'file', language: 'svelte' }],
         revealOutputChannelOn: RevealOutputChannelOn.Never,
         synchronize: {
             // TODO deprecated, rework upon next VS Code minimum version bump
@@ -178,13 +187,19 @@ export function activateSvelteLanguageServer(context: ExtensionContext) {
                 scss: workspace.getConfiguration('scss'),
                 html: workspace.getConfiguration('html')
             },
-            dontFilterIncompleteCompletions: true, // VSCode filters client side and is smarter at it than us
-            isTrusted: workspace.isTrusted
+            isTrusted: workspace.isTrusted,
+            typescript: {
+                tsdk: path.join(vscode.env.appRoot, 'extensions/node_modules/typescript/lib')
+            }
         }
     };
 
-    let ls = createLanguageServer(serverOptions, clientOptions);
+    let ls = createLanguageServer(serverOptions, clientOptions, experimentalVolar);
     ls.start().then(() => {
+        if (experimentalVolar) {
+            return;
+        }
+
         const tagRequestor = (document: TextDocument, position: Position) => {
             const param = ls.code2ProtocolConverter.asTextDocumentPositionParams(
                 document,
@@ -232,7 +247,7 @@ export function activateSvelteLanguageServer(context: ExtensionContext) {
 
         restartingLs = true;
         await ls.stop();
-        ls = createLanguageServer(serverOptions, clientOptions);
+        ls = createLanguageServer(serverOptions, clientOptions, experimentalVolar);
         await ls.start();
         if (showNotification) {
             window.showInformationMessage('Svelte language server restarted.');
@@ -244,16 +259,17 @@ export function activateSvelteLanguageServer(context: ExtensionContext) {
         return ls;
     }
 
-    addDidChangeTextDocumentListener(getLS);
+    if (!experimentalVolar) {
+        addDidChangeTextDocumentListener(getLS);
+        addRenameFileListener(getLS);
+    }
 
     addFindFileReferencesListener(getLS, context);
     addFindComponentReferencesListener(getLS, context);
 
-    addRenameFileListener(getLS);
-
     addCompilePreviewCommand(getLS, context);
 
-    addExtracComponentCommand(getLS, context);
+    addExtractComponentCommand(getLS, context);
 
     languages.setLanguageConfiguration('svelte', {
         indentationRules: {
@@ -315,6 +331,18 @@ export function activateSvelteLanguageServer(context: ExtensionContext) {
             }
         ]
     });
+
+    if (experimentalVolar) {
+        activateTsVersionStatusItem('svelte', 'svelte.tsVersionStatus', context, (text) => text);
+
+        const labsInfo = createLabsInfo(protocol);
+        labsInfo.addLanguageClient(ls);
+
+        return {
+            ...labsInfo.extensionExports,
+            getLS
+        };
+    }
 
     return {
         getLS
@@ -462,7 +490,7 @@ function addCompilePreviewCommand(getLS: () => LanguageClient, context: Extensio
     );
 }
 
-function addExtracComponentCommand(getLS: () => LanguageClient, context: ExtensionContext) {
+function addExtractComponentCommand(getLS: () => LanguageClient, context: ExtensionContext) {
     context.subscriptions.push(
         commands.registerTextEditorCommand('svelte.extractComponent', async (editor) => {
             if (editor?.document?.languageId !== 'svelte') {
@@ -491,7 +519,14 @@ function addExtracComponentCommand(getLS: () => LanguageClient, context: Extensi
     );
 }
 
-function createLanguageServer(serverOptions: ServerOptions, clientOptions: LanguageClientOptions) {
+function createLanguageServer(
+    serverOptions: ServerOptions,
+    clientOptions: LanguageClientOptions,
+    experimentalVolar: boolean
+) {
+    if (experimentalVolar) {
+        return new volarLsp.LanguageClient('svelte', 'Svelte', serverOptions, clientOptions);
+    }
     return new LanguageClient('svelte', 'Svelte', serverOptions, clientOptions);
 }
 
