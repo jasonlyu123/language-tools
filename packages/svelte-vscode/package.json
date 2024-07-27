@@ -393,6 +393,11 @@
                         "none",
                         "ts"
                     ]
+                },
+                "svelte.plugin.svelte.codeLens.componentMode": {
+                  "type": "array",
+                  "title": "Svelte: Component Mode CodeLens",
+                  "description": "Enable code lens for component mode, values can \"runes\" or \"legacy\" or both"
                 }
             }
         },

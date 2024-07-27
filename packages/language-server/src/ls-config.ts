@@ -63,7 +63,10 @@ const defaultLSConfig: LSConfig = {
         hover: { enable: true },
         codeActions: { enable: true },
         selectionRange: { enable: true },
-        defaultScriptLanguage: 'none'
+        defaultScriptLanguage: 'none',
+        codeLens: {
+            componentMode: []
+        }
     }
 };
 
@@ -189,6 +192,9 @@ export interface LSSvelteConfig {
         enable: boolean;
     };
     defaultScriptLanguage: 'none' | 'ts';
+    codeLens: {
+        componentMode: Array<'runes' | 'legacy'>
+    }
 }
 
 /**
