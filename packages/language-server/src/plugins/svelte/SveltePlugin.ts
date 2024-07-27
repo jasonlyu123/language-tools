@@ -3,6 +3,7 @@ import {
     CancellationToken,
     CodeAction,
     CodeActionContext,
+    CodeLens,
     CompletionContext,
     CompletionList,
     Diagnostic,
@@ -22,6 +23,7 @@ import { LSConfigManager, LSSvelteConfig } from '../../ls-config';
 import { isNotNullOrUndefined } from '../../utils';
 import {
     CodeActionsProvider,
+    CodeLensProvider,
     CompletionsProvider,
     DiagnosticsProvider,
     FormattingProvider,
@@ -42,7 +44,8 @@ export class SveltePlugin
         CompletionsProvider,
         HoverProvider,
         CodeActionsProvider,
-        SelectionRangeProvider
+        SelectionRangeProvider,
+        CodeLensProvider
 {
     __name = 'svelte';
     private docManager = new Map<Document, SvelteDocument>();
@@ -345,6 +348,44 @@ export class SveltePlugin
         const svelteDoc = await this.getSvelteDoc(document);
 
         return getSelectionRange(svelteDoc, position);
+    }
+
+    async getCodeLens(document: Document): Promise<CodeLens[] | null> {
+        const config = this.configManager.enabled('svelte.enable')
+            ? this.configManager.getConfig().svelte.codeLens.componentMode
+            : [];
+
+        if (!config.length) {
+            return null;
+        }
+
+        const filePath = document.getFilePath();
+        if (!filePath || getPackageInfo('svelte', filePath).version.major < 5) {
+            return null;
+        }
+
+        const svelteDoc = await this.getSvelteDoc(document);
+        const compiled = await svelteDoc.getCompiled();
+        const runes = (compiled as unknown as { metadata?: { runes?: boolean } })?.metadata?.runes;
+
+        const mode = runes == null ? null : runes ? 'runes' : 'legacy';
+        if (!mode || !config.includes(mode)) {
+            return null;
+        }
+
+        const lens: CodeLens = {
+            range: Range.create(document.positionAt(0), document.positionAt(1)),
+            command: {
+                title: `${mode} mode`,
+                command: ''
+            }
+        };
+
+        return [lens];
+    }
+
+    resolveCodeLens(_document: Document, codeLensToResolve: CodeLens): CodeLens {
+        return codeLensToResolve;
     }
 
     private featureEnabled(feature: keyof LSSvelteConfig) {
