@@ -14,7 +14,8 @@ import {
     TagInformation,
     isInTag,
     getLineOffsets,
-    FilePosition
+    FilePosition,
+    mapRangeToOriginal,
 } from '../../lib/documents';
 import { pathToUrl, urlToPath } from '../../utils';
 import { ConsumerDocumentMapper } from './DocumentMapper';
@@ -23,13 +24,15 @@ import {
     getScriptKindFromAttributes,
     getScriptKindFromFileName,
     isSvelteFilePath,
-    getTsCheckComment
+    getTsCheckComment,
+    convertRange
 } from './utils';
 import { Logger } from '../../logger';
 import { dirname, resolve } from 'path';
 import { URI } from 'vscode-uri';
 import { surroundWithIgnoreComments } from './features/utils';
 import { configLoader } from '../../lib/documents/configLoader';
+import { SvelteSnapshot } from './language-service/interfaces';
 
 /**
  * An error which occurred while trying to parse/preprocess the svelte file contents.
@@ -266,6 +269,7 @@ export class SvelteDocumentSnapshot implements DocumentSnapshot {
     private mapper?: DocumentMapper;
     private lineOffsets?: number[];
     private url = pathToUrl(this.filePath);
+    private _textSpanMapper: SvelteTextSpanMapper | undefined;
 
     version = this.parent.version;
     isSvelte5Plus = Number(this.svelteVersion?.split('.')[0]) >= 5;
@@ -422,6 +426,73 @@ export class SvelteDocumentSnapshot implements DocumentSnapshot {
             this.nrPrependedLines
         );
     }
+
+    get textSpanMapper() {
+        if (!this._textSpanMapper) {
+            this._textSpanMapper = new SvelteTextSpanMapper(this);
+        }
+        return this._textSpanMapper;
+    }
+}
+
+class SvelteTextSpanMapper implements SvelteSnapshot {
+    constructor(private readonly snapshot: SvelteDocumentSnapshot) {}
+
+    getOriginalText(): string {
+        return this.snapshot.parent.getText();
+    }
+
+    getOriginalTextSpan(textSpan: ts.TextSpan): ts.TextSpan | undefined {
+        const range = mapRangeToOriginal(this.snapshot, convertRange(this.snapshot, textSpan));
+
+        if (range.start.line < 0) {
+            return;
+        }
+
+        const start = this.snapshot.parent.offsetAt(range.start);
+        const end = this.snapshot.parent.offsetAt(range.end);
+        return {
+            start: this.snapshot.parent.offsetAt(range.start),
+            length: end - start
+        };
+    }
+
+    getOriginalOffset(generatedOffset: number): number {
+        return this.snapshot.parent.offsetAt(
+            this.snapshot.getOriginalPosition(this.snapshot.positionAt(generatedOffset))
+        );
+    }
+
+    getGeneratedOffset(originalOffset: number): number {
+        return this.snapshot.offsetAt(
+            this.snapshot.getGeneratedPosition(this.snapshot.positionAt(originalOffset))
+        );
+    }
+
+    getGeneratedTextSpan(originalTextSpan: ts.TextSpan): ts.TextSpan | undefined {
+        const originalRange = convertRange(this.snapshot, originalTextSpan);
+        const startPos = this.snapshot.getGeneratedPosition(originalRange.start);
+        const endPos = this.snapshot.getGeneratedPosition(originalRange.end);
+
+        if (startPos.line < 0) {
+            return;
+        }
+
+        const start = this.snapshot.offsetAt(startPos);
+        const end = this.snapshot.offsetAt(endPos);
+        return {
+            start,
+            length: end - start
+        };
+    }
+
+    getGeneratedText(): string {
+        return this.snapshot.getFullText();
+    }
+}
+
+export class MappedTextSpan {
+    constructor(public readonly start: number, public readonly end: number) {}
 }
 
 /**

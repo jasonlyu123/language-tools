@@ -95,6 +95,13 @@ export function convertRange(
     );
 }
 
+export function convertMappedRange(snapshot: DocumentSnapshot, range: ts.TextSpan): Range {
+    return convertRange(
+        snapshot instanceof SvelteDocumentSnapshot ? snapshot.parent : snapshot,
+        range
+    );
+}
+
 export function convertToLocationRange(snapshot: DocumentSnapshot, textSpan: ts.TextSpan): Range {
     const range = mapRangeToOriginal(snapshot, convertRange(snapshot, textSpan));
 
@@ -356,8 +363,8 @@ export function isGeneratedSvelteComponentName(className: string) {
     return className.endsWith(COMPONENT_SUFFIX);
 }
 
-export function offsetOfGeneratedComponentExport(snapshot: SvelteDocumentSnapshot) {
-    return snapshot.getFullText().lastIndexOf(COMPONENT_SUFFIX);
+export function offsetOfGeneratedComponentExport(generatedCode: string) {
+    return generatedCode.lastIndexOf(COMPONENT_SUFFIX);
 }
 
 export function toGeneratedSvelteComponentName(className: string) {

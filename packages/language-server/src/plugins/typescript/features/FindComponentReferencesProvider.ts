@@ -28,7 +28,7 @@ export class FindComponentReferencesProviderImpl implements FindComponentReferen
 
         const references = lang.findReferences(
             tsDoc.filePath,
-            offsetOfGeneratedComponentExport(tsDoc)
+            offsetOfGeneratedComponentExport(tsDoc.getFullText())
         );
         if (!references) {
             return null;

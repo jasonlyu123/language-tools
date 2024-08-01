@@ -201,7 +201,8 @@ describe('CallHierarchyProvider', function () {
                     },
                     kind: SymbolKind.Module,
                     uri: getUri('another-ref-format-date.svelte'),
-                    detail: callHierarchyTestDirRelative
+                    detail: callHierarchyTestDirRelative,
+                    tags: undefined
                 },
                 fromRanges: [
                     {
@@ -241,7 +242,8 @@ describe('CallHierarchyProvider', function () {
                         }
                     },
                     detail: callHierarchyTestDirRelative,
-                    uri: getUri(callHierarchyImportFileName)
+                    uri: getUri(callHierarchyImportFileName),
+                    tags: undefined
                 },
                 fromRanges: [
                     {
@@ -318,7 +320,8 @@ describe('CallHierarchyProvider', function () {
                             character: 0
                         }
                     },
-                    uri: getUri(outgoingComponentName)
+                    uri: getUri(outgoingComponentName),
+                    tags: undefined
                 },
                 fromRanges: [
                     {
@@ -466,7 +469,8 @@ describe('CallHierarchyProvider', function () {
                             line: 0,
                             character: 0
                         }
-                    }
+                    },
+                    tags: undefined
                 }
             }
         ]);

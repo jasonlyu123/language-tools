@@ -7,7 +7,11 @@ import { configLoader } from '../../lib/documents/configLoader';
 import { FileMap, FileSet } from '../../lib/documents/fileCollection';
 import { Logger } from '../../logger';
 import { createGetCanonicalFileName, normalizePath, pathToUrl, urlToPath } from '../../utils';
-import { DocumentSnapshot, SvelteSnapshotOptions } from './DocumentSnapshot';
+import {
+    DocumentSnapshot,
+    SvelteDocumentSnapshot,
+    SvelteSnapshotOptions
+} from './DocumentSnapshot';
 import { createSvelteModuleLoader } from './module-loader';
 import {
     GlobalSnapshotsManager,
@@ -22,6 +26,7 @@ import {
     isSvelteFilePath
 } from './utils';
 import { createProject, ProjectService } from './serviceCache';
+import { decorateLanguageService } from './language-service';
 
 export interface LanguageServiceContainer {
     readonly tsconfigPath: string;
@@ -328,6 +333,19 @@ async function createLanguageService(
     reduceLanguageServiceCapabilityIfFileSizeTooBig();
     updateExtendedConfigDependents();
     watchConfigFile();
+
+    decorateLanguageService(ts, languageService, {
+        get(filename) {
+            if (!isSvelteFilePath(filename)) {
+                return undefined;
+            }
+
+            const snapshot = snapshotManager.get(filename);
+            if (snapshot instanceof SvelteDocumentSnapshot) {
+                return snapshot.textSpanMapper;
+            }
+        }
+    });
 
     return {
         tsconfigPath,
