@@ -83,12 +83,14 @@ export function transform(
 
     let removeStart = start;
     const sortedMoves = [...moves].sort((t1, t2) => t1[0] - t2[0]);
+    // Remove everything between the transformations up until the end position
     for (const transformation of sortedMoves) {
         if (removeStart < transformation[0]) {
             if (
                 deletePos !== moves.length &&
                 removeStart > deleteDest &&
-                !(removeStart < end && transformation[0] >= end)
+                removeStart < end &&
+                transformation[0] < end
             ) {
                 str.move(removeStart, transformation[0], end);
             }
@@ -231,7 +233,7 @@ export function rangeWithTrailingPropertyAccess(
  * Get the end of the node, excluding the type annotation
  */
 export function getEnd(node: any) {
-    return isTypescriptNode(node) ? node.expression.end : node.typeAnnotation?.start ?? node.end;
+    return isTypescriptNode(node) ? node.expression.end : (node.typeAnnotation?.start ?? node.end);
 }
 
 export function isTypescriptNode(node: any) {

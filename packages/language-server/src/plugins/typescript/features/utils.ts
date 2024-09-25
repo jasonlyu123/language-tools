@@ -12,6 +12,7 @@ import { LSAndTSDocResolver } from '../LSAndTSDocResolver';
 import { or } from '../../../utils';
 import { FileMap } from '../../../lib/documents/fileCollection';
 import { LSConfig } from '../../../ls-config';
+import { LanguageServiceContainer } from '../service';
 
 type NodePredicate = (node: ts.Node) => boolean;
 
@@ -83,6 +84,7 @@ export function isComponentAtPosition(
 
 export const IGNORE_START_COMMENT = '/*Ωignore_startΩ*/';
 export const IGNORE_END_COMMENT = '/*Ωignore_endΩ*/';
+export const IGNORE_POSITION_COMMENT = '/*Ωignore_positionΩ*/';
 
 /**
  * Surrounds given string with a start/end comment which marks it
@@ -103,6 +105,10 @@ export function isInGeneratedCode(text: string, start: number, end: number = sta
     // if lastEnd === nextEnd, this means that the str was found at the index
     // up to which is searched for it
     return (lastStart > lastEnd || lastEnd === nextEnd) && lastStart < nextEnd;
+}
+
+export function startsWithIgnoredPosition(text: string, offset: number) {
+    return text.slice(offset).startsWith(IGNORE_POSITION_COMMENT);
 }
 
 /**
@@ -139,7 +145,10 @@ export function getStoreOffsetOf$storeDeclaration(text: string, $storeVarStart: 
 
 export class SnapshotMap {
     private map = new FileMap<DocumentSnapshot>();
-    constructor(private resolver: LSAndTSDocResolver) {}
+    constructor(
+        private resolver: LSAndTSDocResolver,
+        private sourceLs: LanguageServiceContainer
+    ) {}
 
     set(fileName: string, snapshot: DocumentSnapshot) {
         this.map.set(fileName, snapshot);
@@ -151,12 +160,18 @@ export class SnapshotMap {
 
     async retrieve(fileName: string) {
         let snapshot = this.get(fileName);
-        if (!snapshot) {
-            const snap = await this.resolver.getSnapshot(fileName);
-            this.set(fileName, snap);
-            snapshot = snap;
+        if (snapshot) {
+            return snapshot;
         }
-        return snapshot;
+
+        const snap =
+            this.sourceLs.snapshotManager.get(fileName) ??
+            // should not happen in most cases,
+            // the file should be in the project otherwise why would we know about it
+            (await this.resolver.getOrCreateSnapshot(fileName));
+
+        this.set(fileName, snap);
+        return snap;
     }
 }
 

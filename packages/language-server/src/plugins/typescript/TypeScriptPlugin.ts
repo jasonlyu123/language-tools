@@ -6,6 +6,7 @@ import {
     CancellationToken,
     CodeAction,
     CodeActionContext,
+    CodeLens,
     CompletionContext,
     CompletionList,
     DefinitionLink,
@@ -41,6 +42,7 @@ import {
     AppCompletionList,
     CallHierarchyProvider,
     CodeActionsProvider,
+    CodeLensProvider,
     CompletionsProvider,
     DefinitionsProvider,
     DiagnosticsProvider,
@@ -65,7 +67,6 @@ import {
 } from '../interfaces';
 import { LSAndTSDocResolver } from './LSAndTSDocResolver';
 import { ignoredBuildDirectories } from './SnapshotManager';
-import { CallHierarchyProviderImpl } from './features/CallHierarchyProvider';
 import { CodeActionsProviderImpl } from './features/CodeActionsProvider';
 import { CompletionResolveInfo, CompletionsProviderImpl } from './features/CompletionProvider';
 import { DiagnosticsProviderImpl } from './features/DiagnosticsProvider';
@@ -93,9 +94,12 @@ import {
     convertToLocationForReferenceOrDefinition,
     convertToLocationRange,
     isInScript,
+    isSvelte2tsxShimFile,
     isSvelteFilePath,
     symbolKindFromString
 } from './utils';
+import { CallHierarchyProviderImpl } from './features/CallHierarchyProvider';
+import { CodeLensProviderImpl } from './features/CodeLensProvider';
 
 export class TypeScriptPlugin
     implements
@@ -117,6 +121,7 @@ export class TypeScriptPlugin
         InlayHintProvider,
         CallHierarchyProvider,
         FoldingRangeProvider,
+        CodeLensProvider,
         OnWatchFileChanges,
         CompletionsProvider<CompletionResolveInfo>,
         UpdateTsOrJsFile
@@ -143,6 +148,7 @@ export class TypeScriptPlugin
     private readonly inlayHintProvider: InlayHintProviderImpl;
     private readonly foldingRangeProvider: FoldingRangeProviderImpl;
     private readonly callHierarchyProvider: CallHierarchyProviderImpl;
+    private readonly codLensProvider: CodeLensProviderImpl;
 
     constructor(
         configManager: LSConfigManager,
@@ -162,7 +168,10 @@ export class TypeScriptPlugin
             this.completionProvider,
             configManager
         );
-        this.updateImportsProvider = new UpdateImportsProviderImpl(this.lsAndTsDocResolver);
+        this.updateImportsProvider = new UpdateImportsProviderImpl(
+            this.lsAndTsDocResolver,
+            ts.sys.useCaseSensitiveFileNames
+        );
         this.diagnosticsProvider = new DiagnosticsProviderImpl(
             this.lsAndTsDocResolver,
             configManager
@@ -192,6 +201,12 @@ export class TypeScriptPlugin
         this.foldingRangeProvider = new FoldingRangeProviderImpl(
             this.lsAndTsDocResolver,
             configManager
+        );
+        this.codLensProvider = new CodeLensProviderImpl(
+            this.lsAndTsDocResolver,
+            this.findReferencesProvider,
+            this.implementationProvider,
+            this.configManager
         );
     }
 
@@ -371,7 +386,7 @@ export class TypeScriptPlugin
     }
 
     async getDefinitions(document: Document, position: Position): Promise<DefinitionLink[]> {
-        const { lang, tsDoc } = await this.lsAndTsDocResolver.getLSAndTSDoc(document);
+        const { lang, tsDoc, lsContainer } = await this.lsAndTsDocResolver.getLSAndTSDoc(document);
 
         const defs = lang.getDefinitionAndBoundSpan(
             tsDoc.filePath,
@@ -382,12 +397,12 @@ export class TypeScriptPlugin
             return [];
         }
 
-        const snapshots = new SnapshotMap(this.lsAndTsDocResolver);
+        const snapshots = new SnapshotMap(this.lsAndTsDocResolver, lsContainer);
         snapshots.set(tsDoc.filePath, tsDoc);
 
         const result = await Promise.all(
             defs.definitions.map(async (def) => {
-                if (def.fileName.endsWith('svelte-shims.d.ts')) {
+                if (isSvelte2tsxShimFile(def.fileName)) {
                     return;
                 }
 
@@ -607,8 +622,12 @@ export class TypeScriptPlugin
         );
     }
 
-    async getImplementation(document: Document, position: Position): Promise<Location[] | null> {
-        return this.implementationProvider.getImplementation(document, position);
+    async getImplementation(
+        document: Document,
+        position: Position,
+        cancellationToken?: CancellationToken
+    ): Promise<Location[] | null> {
+        return this.implementationProvider.getImplementation(document, position, cancellationToken);
     }
 
     async getTypeDefinition(document: Document, position: Position): Promise<Location[] | null> {
@@ -655,6 +674,18 @@ export class TypeScriptPlugin
 
     async getFoldingRanges(document: Document): Promise<FoldingRange[]> {
         return this.foldingRangeProvider.getFoldingRanges(document);
+    }
+
+    getCodeLens(document: Document): Promise<CodeLens[] | null> {
+        return this.codLensProvider.getCodeLens(document);
+    }
+
+    resolveCodeLens(
+        document: Document,
+        codeLensToResolve: CodeLens,
+        cancellationToken?: CancellationToken
+    ): Promise<CodeLens> {
+        return this.codLensProvider.resolveCodeLens(document, codeLensToResolve, cancellationToken);
     }
 
     private featureEnabled(feature: keyof LSTypescriptConfig) {

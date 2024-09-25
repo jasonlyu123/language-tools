@@ -6,6 +6,7 @@ export interface EmitDtsConfig {
     declarationDir: string;
     svelteShimsPath: string;
     libRoot?: string;
+    tsconfig?: string;
 }
 
 export async function emitDts(config: EmitDtsConfig) {
@@ -17,7 +18,13 @@ export async function emitDts(config: EmitDtsConfig) {
     const likely_failed_files = result.diagnostics.filter((diagnostic) => {
         // List of errors which hint at a failed d.ts generation
         // https://github.com/microsoft/TypeScript/blob/main/src/compiler/diagnosticMessages.json
-        return diagnostic.code === 2527 || (diagnostic.code >= 4000 && diagnostic.code <= 4108);
+        return (
+            diagnostic.code === 2527 ||
+            diagnostic.code === 5088 ||
+            diagnostic.code === 2742 ||
+            (diagnostic.code >= 9005 && diagnostic.code <= 9039) ||
+            (diagnostic.code >= 4000 && diagnostic.code <= 4108)
+        );
     });
 
     if (likely_failed_files.length > 0) {
@@ -47,7 +54,7 @@ function loadTsconfig(config: EmitDtsConfig, svelteMap: SvelteMap) {
     const libRoot = config.libRoot || process.cwd();
 
     const jsconfigFile = ts.findConfigFile(libRoot, ts.sys.fileExists, 'jsconfig.json');
-    let tsconfigFile = ts.findConfigFile(libRoot, ts.sys.fileExists);
+    let tsconfigFile = ts.findConfigFile(libRoot, ts.sys.fileExists, config.tsconfig);
 
     if (!tsconfigFile && !jsconfigFile) {
         throw new Error('Failed to locate tsconfig or jsconfig');
@@ -288,11 +295,14 @@ async function createSvelteMap(config: EmitDtsConfig): Promise<SvelteMap> {
             version,
             noSvelteComponentTyped: noSvelteComponentTyped
         }).code;
-        svelteFiles.set(path, transformed);
+        svelteFiles.set(path.replace(/\\/g, '/'), transformed);
         return isTsFile;
     }
 
-    return { add, get: (key: string) => svelteFiles.get(key) };
+    return {
+        add,
+        get: (key: string) => svelteFiles.get(key.replace(/\\/g, '/'))
+    };
 }
 
 function isSvelteFilepath(filePath: string) {

@@ -59,7 +59,6 @@ type KeysMatching<Obj, V> = {[K in keyof Obj]-?: Obj[K] extends V ? K : never}[k
 /** @internal PRIVATE API, DO NOT USE */
 declare type __sveltets_2_CustomEvents<T> = {[K in KeysMatching<T, CustomEvent>]: T[K] extends CustomEvent ? T[K]['detail']: T[K]}
 
-declare var process: NodeJS.Process & { browser: boolean }
 declare function __sveltets_2_ensureRightProps<Props>(props: Props): {};
 declare function __sveltets_2_instanceOf<T = any>(type: AConstructorTypeOf<T>): T;
 declare function __sveltets_2_allPropsType(): SvelteAllProps
@@ -145,10 +144,6 @@ declare function __sveltets_2_cssProp(prop: Record<string, any>): {};
 
 // @ts-ignore Svelte v3/v4 don't have this
 declare function __sveltets_2_ensureSnippet(val: ReturnType<import('svelte').Snippet> | undefined | null): any;
-// @ts-ignore Svelte v3/v4 don't have this
-declare function __sveltets_2_snippet(): import('svelte').Snippet;
-// @ts-ignore Svelte v3/v4 don't have this
-declare function __sveltets_2_snippet<T>(t: T): import('svelte').Snippet<[T]>;
 
 /** @internal PRIVATE API, DO NOT USE */
 type __sveltets_2_SvelteAnimationReturnType = {
@@ -227,9 +222,9 @@ declare type ATypedSvelteComponent = {
 declare type ConstructorOfATypedSvelteComponent = new (args: {target: any, props?: any}) => ATypedSvelteComponent
 declare function __sveltets_2_ensureComponent<
     // @ts-ignore svelte.Component doesn't exist in Svelte 4
-    T extends ConstructorOfATypedSvelteComponent | (0 extends (1 & import('svelte').Component) ? never : import('svelte').Component<any, any, any>) | null | undefined
+    T extends ConstructorOfATypedSvelteComponent | (typeof import('svelte') extends { mount: any } ? import('svelte').Component<any, any, any> : never) | null | undefined
     // @ts-ignore svelte.Component doesn't exist in Svelte 4
->(type: T): NonNullable<T extends ConstructorOfATypedSvelteComponent ? T : 0 extends (1 & import('svelte').Component) ? T : T extends import('svelte').Component<infer Props> ? typeof import('svelte').SvelteComponent<Props, Props['$$events'], Props['$$slots']> : T>;
+>(type: T): NonNullable<T extends ConstructorOfATypedSvelteComponent ? T : typeof import('svelte') extends { mount: any } ? T extends import('svelte').Component<infer Props extends Record<string, any>> ? typeof import('svelte').SvelteComponent<Props, Props['$$events'], Props['$$slots']> : T : T>;
 declare function __sveltets_2_ensureArray<T extends ArrayLike<unknown> | Iterable<unknown>>(array: T): T extends ArrayLike<infer U> ? U[] : T extends Iterable<infer U> ? Iterable<U> : any[];
 
 type __sveltets_2_PropsWithChildren<Props, Slots> = Props &
@@ -247,7 +242,7 @@ declare function __sveltets_$$bindings<Bindings extends string[]>(...bindings: B
 
 interface __sveltets_2_IsomorphicComponent<Props extends Record<string, any> = any, Events extends Record<string, any> = any, Slots extends Record<string, any> = any, Exports = {}, Bindings = string> {
     new (options: import('svelte').ComponentConstructorOptions<Props>): import('svelte').SvelteComponent<Props, Events, Slots> & { $$bindings?: Bindings } & Exports;
-    (internal: unknown, props: Props extends Record<string, never> ? {$$events?: Events, $$slots?: Slots} : Props & {$$events?: Events, $$slots?: Slots}): Exports;
+    (internal: unknown, props: Props extends Record<string, never> ? {$$events?: Events, $$slots?: Slots} : Props & {$$events?: Events, $$slots?: Slots}): Exports & { $set?: any, $on?: any };
     z_$$bindings?: Bindings;
 }
 

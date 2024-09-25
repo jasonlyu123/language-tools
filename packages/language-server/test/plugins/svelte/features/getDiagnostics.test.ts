@@ -31,7 +31,12 @@ describe('SveltePlugin#getDiagnostics', () => {
         docText?: string;
     }) {
         const document = new Document('', docText);
-        const svelteDoc: SvelteDocument = <any>{ getTranspiled, getCompiled, config };
+        const svelteDoc: SvelteDocument = <any>{
+            getTranspiled,
+            getCompiled,
+            config,
+            getSvelteVersion: () => [4, 0]
+        };
         const result = await getDiagnostics(document, svelteDoc, settings);
         return {
             toEqual: (expected: Diagnostic[]) => assert.deepStrictEqual(result, expected)
@@ -298,7 +303,9 @@ describe('SveltePlugin#getDiagnostics', () => {
                             }
                         ]
                     }),
-                config: {}
+                config: {
+                    preprocess: []
+                }
             })
         ).toEqual([
             {
@@ -343,7 +350,9 @@ describe('SveltePlugin#getDiagnostics', () => {
                             ]
                         }
                     }),
-                config: {}
+                config: {
+                    preprocess: []
+                }
             })
         ).toEqual([]);
     });
@@ -372,7 +381,9 @@ describe('SveltePlugin#getDiagnostics', () => {
                             ]
                         }
                     }),
-                config: {}
+                config: {
+                    preprocess: []
+                }
             })
         ).toEqual([]);
     });
@@ -399,7 +410,9 @@ describe('SveltePlugin#getDiagnostics', () => {
                             ]
                         }
                     }),
-                config: {},
+                config: {
+                    preprocess: []
+                },
                 settings: { 123: 'ignore' }
             })
         ).toEqual([]);
@@ -425,7 +438,9 @@ describe('SveltePlugin#getDiagnostics', () => {
                             }
                         ]
                     }),
-                config: {},
+                config: {
+                    preprocess: []
+                },
                 settings: { 123: 'error' }
             })
         ).toEqual([
@@ -468,60 +483,66 @@ describe('SveltePlugin#getDiagnostics', () => {
         const { plugin, document } = setupFromFile('diagnostics-module.svelte');
         const diagnostics = await plugin.getDiagnostics(document);
 
-        assert.deepStrictEqual(diagnostics, [
-            {
-                range: { start: { line: 1, character: 4 }, end: { line: 1, character: 26 } },
-                message: isSvelte5Plus
-                    ? 'Reactive declarations only exist at the top level of the instance script'
-                    : '$: has no effect in a module script',
-                severity: 2,
-                source: 'svelte',
-                code: isSvelte5Plus
-                    ? 'reactive_declaration_invalid_placement'
-                    : 'module-script-reactive-declaration'
-            }
-        ]);
+        assert.deepStrictEqual(
+            diagnostics.filter((d) => d.code !== 'script_context_deprecated'),
+            [
+                {
+                    range: { start: { line: 1, character: 4 }, end: { line: 1, character: 26 } },
+                    message: isSvelte5Plus
+                        ? 'Reactive declarations only exist at the top level of the instance script'
+                        : '$: has no effect in a module script',
+                    severity: 2,
+                    source: 'svelte',
+                    code: isSvelte5Plus
+                        ? 'reactive_declaration_invalid_placement'
+                        : 'module-script-reactive-declaration'
+                }
+            ]
+        );
     });
 
     it('should correctly determine diagnostic position for script when theres also context="module"', async () => {
         const { plugin, document } = setupFromFile('diagnostics-module-and-instance.svelte');
         const diagnostics = await plugin.getDiagnostics(document);
 
-        assert.deepStrictEqual(diagnostics, [
-            {
-                code: isSvelte5Plus ? 'export_let_unused' : 'unused-export-let',
-                message:
-                    "Component has unused export property 'unused1'. If it is for external reference only, please consider using `export const unused1`",
-                range: {
-                    start: {
-                        line: 5,
-                        character: 13
+        assert.deepStrictEqual(
+            diagnostics.filter((d) => d.code !== 'script_context_deprecated'),
+            [
+                {
+                    code: isSvelte5Plus ? 'export_let_unused' : 'unused-export-let',
+                    message:
+                        "Component has unused export property 'unused1'. If it is for external reference only, please consider using `export const unused1`",
+                    range: {
+                        start: {
+                            line: 5,
+                            character: 13
+                        },
+                        end: {
+                            line: 5,
+                            character: isSvelte5Plus ? 20 : 27
+                        }
                     },
-                    end: {
-                        line: 5,
-                        character: isSvelte5Plus ? 20 : 27
-                    }
+                    severity: 2,
+                    source: 'svelte'
                 },
-                severity: 2,
-                source: 'svelte'
-            },
-            {
-                code: isSvelte5Plus ? 'export_let_unused' : 'unused-export-let',
-                message:
-                    "Component has unused export property 'unused2'. If it is for external reference only, please consider using `export const unused2`",
-                range: {
-                    start: {
-                        line: 6,
-                        character: 13
+                {
+                    code: isSvelte5Plus ? 'export_let_unused' : 'unused-export-let',
+                    message:
+                        "Component has unused export property 'unused2'. If it is for external reference only, please consider using `export const unused2`",
+                    range: {
+                        start: {
+                            line: 6,
+                            character: 13
+                        },
+                        end: {
+                            line: 6,
+                            character: isSvelte5Plus ? 20 : 27
+                        }
                     },
-                    end: {
-                        line: 6,
-                        character: isSvelte5Plus ? 20 : 27
-                    }
-                },
-                severity: 2,
-                source: 'svelte'
-            }
-        ]);
+                    severity: 2,
+                    source: 'svelte'
+                }
+            ]
+        );
     });
 });
