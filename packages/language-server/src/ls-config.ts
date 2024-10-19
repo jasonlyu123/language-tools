@@ -65,7 +65,7 @@ const defaultLSConfig: LSConfig = {
         selectionRange: { enable: true },
         defaultScriptLanguage: 'none',
         codeLens: {
-            componentMode: []
+            componentMode: {}
         }
     }
 };
@@ -193,7 +193,7 @@ export interface LSSvelteConfig {
     };
     defaultScriptLanguage: 'none' | 'ts';
     codeLens: {
-        componentMode: Array<'runes' | 'legacy'>
+        componentMode: Partial<Record<'runes' | 'legacy' | 'migrate', boolean>>
     }
 }
 

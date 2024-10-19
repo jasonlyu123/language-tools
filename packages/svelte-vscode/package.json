@@ -394,11 +394,24 @@
                         "ts"
                     ]
                 },
-                "svelte.plugin.svelte.codeLens.componentMode": {
-                  "type": "array",
-                  "title": "Svelte: Component Mode CodeLens",
-                  "description": "Enable code lens for component mode, values can \"runes\" or \"legacy\" or both"
-                }
+                "svelte.plugin.svelte.codeLens.componentMode.runes": {
+                    "type": "boolean",
+                    "default": false,
+                    "title": "Svelte: CodeLens",
+                    "description": "Showing a codelens to indicate component in runes mode"
+                },
+                "svelte.plugin.svelte.codeLens.componentMode.legacy": {
+                    "type": "boolean",
+                    "default": false,
+                    "title": "Svelte: CodeLens",
+                    "description": "Showing a codelens to indicate component in legacy mode"
+                },
+                "svelte.plugin.svelte.codeLens.componentMode.migrate": {
+                  "type": "boolean",
+                  "default": false,
+                  "title": "Svelte: CodeLens",
+                  "description": "Showing a codelens for migrating component to runes mode"
+              }
             }
         },
         "languages": [

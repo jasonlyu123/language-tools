@@ -4,6 +4,7 @@ import {
     CodeAction,
     CodeActionContext,
     CodeLens,
+    Command,
     CompletionContext,
     CompletionList,
     Diagnostic,
@@ -353,9 +354,9 @@ export class SveltePlugin
     async getCodeLens(document: Document): Promise<CodeLens[] | null> {
         const config = this.configManager.enabled('svelte.enable')
             ? this.configManager.getConfig().svelte.codeLens.componentMode
-            : [];
+            : undefined;
 
-        if (!config.length) {
+        if (!config || !Object.keys(config).length) {
             return null;
         }
 
@@ -366,22 +367,46 @@ export class SveltePlugin
 
         const svelteDoc = await this.getSvelteDoc(document);
         const compiled = await svelteDoc.getCompiled();
-        const runes = (compiled as unknown as { metadata?: { runes?: boolean } })?.metadata?.runes;
+        const runes =
+            (compiled as unknown as { metadata?: { runes?: boolean } })?.metadata?.runes ?? false;
 
-        const mode = runes == null ? null : runes ? 'runes' : 'legacy';
-        if (!mode || !config.includes(mode)) {
+        const commands: Command[] = [];
+
+        if (runes) {
+            if (config) {
+                commands.push({
+                    title: 'Runes mode',
+                    command: ''
+                });
+            }
+        } else {
+            if (config.legacy) {
+                commands.push({
+                    title: 'Legacy mode',
+                    command: ''
+                });
+            }
+            if (config.migrate) {
+                commands.push({
+                    title: 'Migrate to Runes',
+                    command: 'migrate_to_svelte_5',
+                    arguments: [document.uri]
+                });
+            }
+        }
+
+        if (!commands.length) {
             return null;
         }
 
-        const lens: CodeLens = {
-            range: Range.create(document.positionAt(0), document.positionAt(1)),
-            command: {
-                title: `${mode} mode`,
-                command: ''
-            }
-        };
-
-        return [lens];
+        const range = Range.create(
+            document.positionAt(0),
+            document.positionAt(document.getTextLength())
+        );
+        return commands.map((command) => ({
+            range,
+            command,
+        }));
     }
 
     resolveCodeLens(_document: Document, codeLensToResolve: CodeLens): CodeLens {
