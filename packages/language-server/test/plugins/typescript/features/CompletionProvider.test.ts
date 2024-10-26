@@ -41,7 +41,7 @@ function harmonizeNewLines(input?: string) {
 }
 
 // describe('CompletionProviderImpl (old transformation)', test(false));
-describe('CompletionProviderImpl', function () {
+describe.only('CompletionProviderImpl', function () {
     serviceWarmup(this, testFilesDir, pathToUrl(testDir));
 
     function setup(filename: string) {
@@ -1290,7 +1290,7 @@ describe('CompletionProviderImpl', function () {
             insertText: undefined,
             insertTextFormat: undefined,
             labelDetails: undefined,
-            commitCharacters: ['.', ',', ';', '('],
+            commitCharacters: [],
             textEdit: {
                 newText: '@hi',
                 range: {

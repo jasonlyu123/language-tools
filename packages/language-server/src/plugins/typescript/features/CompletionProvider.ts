@@ -66,6 +66,12 @@ type LastCompletion = {
     completionList: AppCompletionList<CompletionResolveInfo> | null;
 };
 
+interface CommitCharactersOptions {
+    defaultCommitCharacters: string[] | undefined;
+    defaultCommitCharactersForEntry: string[] | undefined;
+    addCommitCharacters: boolean;
+}
+
 export class CompletionsProviderImpl implements CompletionsProvider<CompletionResolveInfo> {
     constructor(
         private readonly lsAndTsDocResolver: LSAndTSDocResolver,
@@ -237,10 +243,7 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionRe
             },
             formatSettings
         );
-        const addCommitCharacters =
-            // replicating VS Code behavior https://github.com/microsoft/vscode/blob/main/extensions/typescript-language-features/src/languageFeatures/completions.ts
-            response?.isNewIdentifierLocation !== true &&
-            (!tsDoc.parserError || isInScript(position, tsDoc));
+
         let completions = response?.entries || [];
 
         const customCompletions = eventAndSlotLetCompletions.concat(tagCompletions ?? []);
@@ -290,6 +293,7 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionRe
                     position,
                     isCompletionInTag,
                     addCommitCharacters,
+                    defaultCommitCharactersForEntry,
                     asStore,
                     existingImports
                 );
@@ -377,6 +381,15 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionRe
 
         const completionList = CompletionList.create(completionItems, !!tsDoc.parserError);
         this.lastCompletion = { key: document.getFilePath() || '', position, completionList };
+        if (
+            addCommitCharacters &&
+            clientSupportsItemsDefault &&
+            response?.defaultCommitCharacters
+        ) {
+            completionList.itemDefaults = {
+                commitCharacters: response?.defaultCommitCharacters
+            };
+        }
 
         return completionList;
     }
@@ -624,6 +637,7 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionRe
         position: Position,
         isCompletionInTag: boolean,
         addCommitCharacters: boolean,
+        defaultCommitCharacters: string[] | undefined,
         asStore: boolean,
         existingImports: Set<string>
     ): AppCompletionItem<CompletionResolveInfo> | null {
@@ -669,7 +683,9 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionRe
             label,
             insertText,
             kind: scriptElementKindToCompletionItemKind(comp.kind),
-            commitCharacters: addCommitCharacters ? this.commitCharacters : undefined,
+            commitCharacters: addCommitCharacters
+                ? this.getCommitCharacters(comp, defaultCommitCharacters)
+                : undefined,
             // Make sure svelte component and runes take precedence
             sortText: isRunesCompletion || isSvelteComp ? '-1' : comp.sortText,
             preselect: isRunesCompletion || isSvelteComp ? true : comp.isRecommended,
@@ -732,6 +748,62 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionRe
             isSvelteComp,
             isRunesCompletion
         };
+    }
+
+    private getCommitCharactersOptions(
+        response: ts.CompletionInfo,
+        tsDoc: SvelteDocumentSnapshot,
+        position: Position
+    ): CommitCharactersOptions {
+        if (tsDoc.parserError || !isInScript(position, tsDoc)) {
+            return {
+                defaultCommitCharacters: undefined,
+                defaultCommitCharactersForEntry: undefined,
+                addCommitCharacters: false
+            };
+        }
+
+        // if client support items default, set it in the completion list
+        // if not, add to individual completion items
+
+        const addCommitCharacters =
+            // replicating VS Code behavior https://github.com/microsoft/vscode/blob/main/extensions/typescript-language-features/src/languageFeatures/completions.ts
+            response?.isNewIdentifierLocation !== true;
+
+        const clientSupportsItemsDefault =
+            this.configManager.getClientCapabilities()?.textDocument?.completion?.completionList
+                ?.itemDefaults;
+
+        // this is controlled by a vscode setting that we didn't support yet, always add it until we support it
+        const defaultCommitCharacters = response?.defaultCommitCharacters?.concat('(');
+
+        return {
+            defaultCommitCharacters,
+            addCommitCharacters,
+            defaultCommitCharactersForEntry: clientSupportsItemsDefault
+                ? undefined
+                : defaultCommitCharacters
+        };
+    }
+
+    private getCommitCharacters(
+        entry: ts.CompletionEntry,
+        defaultCommitCharacters: string[] | undefined
+    ) {
+        const commitCharacters = entry.commitCharacters ?? defaultCommitCharacters;
+        if (commitCharacters) {
+            return commitCharacters;
+        }
+
+        // Ambient JS word based suggestions
+        if (
+            entry.kind === ts.ScriptElementKind.warning ||
+            entry.kind === ts.ScriptElementKind.string
+        ) {
+            return undefined;
+        }
+
+        return this.commitCharacters;
     }
 
     private isExistingSvelteComponentImport(
