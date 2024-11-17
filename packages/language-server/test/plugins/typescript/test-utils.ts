@@ -17,8 +17,15 @@ import { findTsConfigPath } from '../../../src/plugins/typescript/utils';
 
 const isSvelte5Plus = Number(VERSION.split('.')[0]) >= 5;
 
-export function createVirtualTsSystem(currentDirectory: string): ts.System {
-    const virtualFs = new FileMap<string>();
+export function createVirtualTsSystem(
+    currentDirectory: string,
+    options?: {
+        useCaseSensitiveFileNames: boolean;
+    }
+): ts.System {
+    const virtualFs = new FileMap<string>(
+        options?.useCaseSensitiveFileNames ?? ts.sys.useCaseSensitiveFileNames
+    );
     // array behave more similar to the actual fs event than Set
     const watchers = new FileMap<ts.FileWatcherCallback[]>();
     const watchTimeout = new FileMap<Array<ReturnType<typeof setTimeout>>>();

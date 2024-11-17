@@ -16,8 +16,8 @@ import { createVirtualTsSystem, getRandomVirtualDirPath } from './test-utils';
 describe('service', () => {
     const testDir = path.join(__dirname, 'testfiles');
 
-    function setup() {
-        const virtualSystem = createVirtualTsSystem(testDir);
+    function setup(options?: { useCaseSensitiveFileNames: boolean }) {
+        const virtualSystem = createVirtualTsSystem(testDir, options);
 
         const rootUris = [pathToUrl(testDir)];
         const lsDocumentContext: LanguageServiceDocumentContext = {
@@ -78,6 +78,58 @@ describe('service', () => {
             moduleResolution: ts.ModuleResolutionKind.Node10,
             target: ts.ScriptTarget.ESNext
         });
+    });
+
+    it.only('load svelte2tsx ambient types', async () => {
+        const dirPath = normalizePath(getRandomVirtualDirPath(testDir));
+        const { virtualSystem, lsDocumentContext, rootUris } = setup({ useCaseSensitiveFileNames: false });
+        const virtualSystemCaseSensitive = createVirtualTsSystem(testDir, { useCaseSensitiveFileNames: true });
+
+        const readFile = virtualSystem.readFile;
+        virtualSystem.readFile = (filePath) => {
+            if (filePath.startsWith('/case-sensitive')) {
+                return virtualSystemCaseSensitive.readFile(filePath);
+            }
+            return filePath.startsWith(dirPath) ? readFile(filePath) : ts.sys.readFile(filePath);
+        };
+
+        const writeFile = virtualSystem.writeFile;
+        virtualSystem.writeFile = (filePath, content) => {
+            if (filePath.startsWith('/case-sensitive')) {
+                return virtualSystemCaseSensitive.writeFile(filePath, content);
+            }
+            return writeFile(filePath, content);
+        };
+
+        const directoryExists = virtualSystem.directoryExists;
+        virtualSystem.directoryExists = (dirPath) => {
+            if (dirPath.startsWith('/case-sensitive')) {
+                return virtualSystemCaseSensitive.directoryExists(dirPath);
+            }
+            return directoryExists(dirPath);
+        };
+
+        virtualSystem.writeFile(
+            path.join(dirPath, 'tsconfig.json'),
+            JSON.stringify({
+                compilerOptions: {}
+            })
+        );
+
+        virtualSystem.writeFile(
+            path.join(dirPath, 'random.svelte'),
+            '<script>const a: number = null;</script> <div></div>'
+        );
+
+        const ls = await getService(
+            path.join(dirPath, 'random.svelte'),
+            rootUris,
+            lsDocumentContext
+        );
+
+        const diagnostic = ls.getService().getSemanticDiagnostics(path.join(dirPath, 'random.svelte'));
+
+        console.log(diagnostic.map((d) => d.messageText));
     });
 
     it('errors if tsconfig matches no svelte files', async () => {
