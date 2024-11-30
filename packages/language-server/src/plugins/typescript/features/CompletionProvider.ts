@@ -42,6 +42,7 @@ import {
 } from '../utils';
 import { getJsDocTemplateCompletion } from './getJsDocTemplateCompletion';
 import {
+    findContainingNode,
     getComponentAtPosition,
     getFormatCodeBasis,
     getNewScriptStartTag,
@@ -70,6 +71,21 @@ interface CommitCharactersOptions {
     checkCommitCharacters: boolean;
     defaultCommitCharacters?: string[];
     isNewIdentifierLocation?: boolean;
+}
+
+export enum CompletionSource {
+    /** Completions that require `this.` insertion text */
+    ThisProperty = 'ThisProperty/',
+    /** Auto-import that comes attached to a class member snippet */
+    ClassMemberSnippet = 'ClassMemberSnippet/',
+    /** A type-only import that needs to be promoted in order to be used at the completion location */
+    TypeOnlyAlias = 'TypeOnlyAlias/',
+    /** Auto-import that comes attached to an object literal method snippet */
+    ObjectLiteralMethodSnippet = 'ObjectLiteralMethodSnippet/',
+    /** Case completions for switch statements */
+    SwitchCases = 'SwitchCases/',
+    /** Completions for an Object literal expression */
+    ObjectLiteralMemberWithComma = 'ObjectLiteralMemberWithComma/'
 }
 
 export class CompletionsProviderImpl implements CompletionsProvider<CompletionResolveInfo> {
@@ -236,7 +252,7 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionRe
 
         const response = lang.getCompletionsAtPosition(
             filePath,
-            offset,
+            this.getPropStartPosition(offset, lang, tsDoc, attributeContext),
             {
                 ...userPreferences,
                 triggerCharacter: validTriggerCharacter
@@ -404,6 +420,38 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionRe
         this.lastCompletion = { key: document.getFilePath() || '', position, completionList };
 
         return completionList;
+    }
+
+    private getPropStartPosition(
+        offset: number,
+        lang: ts.LanguageService,
+        tsDoc: SvelteDocumentSnapshot,
+        attributeContext: AttributeContext | null
+    ): number {
+        if (attributeContext == null || attributeContext.inValue) {
+            return offset;
+        }
+        const program = lang.getProgram();
+        const sourceFile = program?.getSourceFile(tsDoc.filePath);
+
+        if (!sourceFile) {
+            return offset;
+        }
+
+        const stringLiteral = findContainingNode(
+            sourceFile,
+            {
+                start: offset,
+                length: 0
+            },
+            ts.isStringLiteral
+        );
+
+        if (!stringLiteral) {
+            return offset;
+        }
+
+        return stringLiteral.getStart();
     }
 
     private getWordAtPosition(document: Document, offset: number) {
@@ -667,16 +715,40 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionRe
             return null;
         }
         // Remove wrong quotes, for example when using --css-props
-        if (
-            isCompletionInTag &&
-            !insertText &&
-            label[0] === '"' &&
-            label[label.length - 1] === '"'
-        ) {
+        if (isCompletionInTag && !insertText && this.isQuoted(label)) {
             label = label.slice(1, -1);
         } else if (asStore) {
             // only modify label, so that the data property is untouched, which is important so the resolving still works
             label = `$${label}`;
+        }
+
+        if (isCompletionInTag && comp.source === CompletionSource.ObjectLiteralMethodSnippet) {
+            const variable = 'const a= {';
+            const ast = ts.createSourceFile(
+                'index.ts',
+                variable + insertText + '}',
+                ts.ScriptTarget.Latest,
+                /*setParentNodes*/ true,
+                snapshot.scriptKind
+            );
+
+            const method = findContainingNode(
+                ast,
+                { start: variable.length, length: 0 },
+                ts.isMethodDeclaration
+            );
+            if (method) {
+                let name = method.name.getText();
+                if (this.isQuoted(name)) {
+                    name = name.slice(1, -1);
+                }
+
+                const parameters = method.parameters.map((p) => p.name.getText()).join(', ');
+                insertText = name + `={(${parameters}) => \${0:\{\\}}}`;
+                comp.labelDetails = {
+                    detail: `={(${parameters}) => ...}`
+                };
+            }
         }
 
         const textEdit = replacementSpan
@@ -711,6 +783,13 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionRe
                 position
             }
         };
+    }
+
+    private isQuoted(text: string) {
+        return (
+            (text[0] === '"' && text[text.length - 1] === '"') ||
+            (text[0] === "'" && text[text.length - 1] === "'")
+        );
     }
 
     private getCompletionLabelAndInsert(

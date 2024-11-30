@@ -13,7 +13,8 @@ import {
     CompletionTriggerKind,
     MarkupKind,
     TextEdit,
-    CancellationTokenSource
+    CancellationTokenSource,
+    InsertTextFormat
 } from 'vscode-languageserver';
 import {
     CompletionsProviderImpl,
@@ -1420,6 +1421,35 @@ describe('CompletionProviderImpl', function () {
         assert.deepStrictEqual(
             completions?.items.map((item) => item.label),
             ['s', 'm', 'l']
+        );
+    });
+
+    it('provide inline handler snippet', async () => {
+        const { completionProvider, document } = setup('component-callback-props-snippet.svelte');
+
+        const completions = await completionProvider.getCompletions(
+            document,
+            Position.create(8, 8)
+        );
+
+        const item = completions?.items.find((item) => item.label === 'onClick' && item.labelDetails);
+        assert.ok(item);
+        delete item.data;
+        assert.deepStrictEqual(
+            item,
+            {
+                label: 'onClick',
+                kind: CompletionItemKind.Field,
+                sortText: '11\u0000onClick\u00001',
+                insertText: 'onClick={(e) => ${0:{\\}}}',
+                insertTextFormat: InsertTextFormat.Snippet,
+                commitCharacters: ['.', ',', ';', '('],
+                preselect: undefined,
+                labelDetails: {
+                    detail: "={(e) => ...}",
+                },
+                textEdit: undefined
+            }
         );
     });
 
