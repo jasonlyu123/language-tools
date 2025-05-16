@@ -605,7 +605,7 @@
             "commandPalette": [
                 {
                     "command": "svelte.showCompiledCodeToSide",
-                    "when": "editorLangId == svelte"
+                    "when": "editorLangId == svelte || resourceFilename =~ /\\.svelte\\.(ts|js)/"
                 },
                 {
                     "command": "svelte.typescript.findAllFileReferences",
@@ -619,7 +619,7 @@
             "editor/title": [
                 {
                     "command": "svelte.showCompiledCodeToSide",
-                    "when": "editorLangId == svelte",
+                    "when": "editorLangId == svelte || resourceFilename =~ /\\.svelte\\.(ts|js)/",
                     "group": "navigation"
                 }
             ],

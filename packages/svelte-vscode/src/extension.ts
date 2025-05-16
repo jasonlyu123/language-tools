@@ -25,7 +25,7 @@ import {
     WorkspaceEdit as LSWorkspaceEdit
 } from 'vscode-languageclient';
 import { LanguageClient, ServerOptions, TransportKind } from 'vscode-languageclient/node';
-import CompiledCodeContentProvider from './CompiledCodeContentProvider';
+import CompiledCodeContentProvider, { canShowCompiledCode } from './CompiledCodeContentProvider';
 import { activateTagClosing } from './html/autoClose';
 import { EMPTY_ELEMENTS } from './html/htmlEmptyTagsShared';
 import { TsPlugin } from './tsplugin';
@@ -58,6 +58,12 @@ export function activate(context: ExtensionContext) {
             await lsApi?.restartLS(true);
         })
     );
+
+    addCompilePreviewCommand(() => {
+        const getLs = lsApi?.getLS ?? activateSvelteLanguageServer(context).getLS;
+
+        return getLs();
+    }, context);
 
     if (workspace.textDocuments.some((doc) => doc.languageId === 'svelte')) {
         lsApi = activateSvelteLanguageServer(context);
@@ -262,8 +268,6 @@ export function activateSvelteLanguageServer(context: ExtensionContext) {
 
     addRenameFileListener(getLS);
 
-    addCompilePreviewCommand(getLS, context);
-
     addExtracComponentCommand(getLS, context);
 
     addMigrateToSvelte5Command(getLS, context);
@@ -457,7 +461,7 @@ function addCompilePreviewCommand(getLS: () => LanguageClient, context: Extensio
 
     context.subscriptions.push(
         commands.registerTextEditorCommand('svelte.showCompiledCodeToSide', async (editor) => {
-            if (editor?.document?.languageId !== 'svelte') {
+            if (!editor?.document || !canShowCompiledCode(editor.document)) {
                 return;
             }
 

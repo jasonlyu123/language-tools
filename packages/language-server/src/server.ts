@@ -23,7 +23,8 @@ import {
     SemanticTokensRefreshRequest,
     InlayHintRefreshRequest,
     DidChangeWatchedFilesNotification,
-    RelativePattern
+    RelativePattern,
+    TextDocumentItem
 } from 'vscode-languageserver';
 import { IPCMessageReader, IPCMessageWriter, createConnection } from 'vscode-languageserver/node';
 import { DiagnosticsManager } from './lib/DiagnosticsManager';
@@ -599,21 +600,32 @@ export function startServer(options?: LSOptions) {
         return pluginHost.findComponentReferences(uri);
     });
 
-    connection.onRequest('$/getCompiledCode', async (uri: DocumentUri) => {
-        const doc = docManager.get(uri);
-        if (!doc) {
-            return null;
-        }
+    connection.onRequest(
+        '$/getCompiledCode',
+        async (uriOrDocument: DocumentUri | TextDocumentItem) => {
+            if (!DocumentUri.is(uriOrDocument)) {
+                const compiled = await sveltePlugin.getModuleCompiledResult(uriOrDocument);
+                return compiled
+                    ? {
+                          js: compiled.js
+                      }
+                    : null;
+            }
+            const doc = docManager.get(uriOrDocument);
+            if (!doc) {
+                return null;
+            }
 
-        const compiled = await sveltePlugin.getCompiledResult(doc);
-        if (compiled) {
-            const js = compiled.js;
-            const css = compiled.css;
-            return { js, css };
-        } else {
-            return null;
+            const compiled = await sveltePlugin.getCompiledResult(doc);
+            if (compiled) {
+                const js = compiled.js;
+                const css = compiled.css;
+                return { js, css };
+            } else {
+                return null;
+            }
         }
-    });
+    );
 
     connection.listen();
 }

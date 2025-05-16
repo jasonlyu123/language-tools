@@ -12,15 +12,16 @@ import {
     Position,
     Range,
     SelectionRange,
+    TextDocumentItem,
     TextEdit,
     WorkspaceEdit
 } from 'vscode-languageserver';
 import { Plugin } from 'prettier';
-import { getPackageInfo, importPrettier } from '../../importPackage';
+import { getPackageInfo, importPrettier, importSvelte } from '../../importPackage';
 import { Document } from '../../lib/documents';
 import { Logger } from '../../logger';
 import { LSConfigManager, LSSvelteConfig } from '../../ls-config';
-import { isNotNullOrUndefined } from '../../utils';
+import { isNotNullOrUndefined, urlToPath } from '../../utils';
 import {
     CodeActionsProvider,
     CompletionsProvider,
@@ -112,6 +113,25 @@ export class SveltePlugin
             const svelteDoc = await this.getSvelteDoc(document);
             // @ts-ignore is 'client' in Svelte 5
             return svelteDoc.getCompiledWith({ generate: 'dom' });
+        } catch (error) {
+            return null;
+        }
+    }
+    async getModuleCompiledResult(document: TextDocumentItem) {
+        const filePath = urlToPath(document.uri);
+        if (!filePath) {
+            return null;
+        }
+
+        try {
+            const compiler = importSvelte(filePath);
+            if (!('compileModule' in compiler) || typeof compiler.compileModule !== 'function') {
+                Logger.error('Svelte compiler does not support compileModule');
+                return null;
+            }
+            return compiler.compileModule(document.text, {
+                filename: filePath
+            });
         } catch (error) {
             return null;
         }

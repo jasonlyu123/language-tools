@@ -1,4 +1,4 @@
-import { LanguageClient } from 'vscode-languageclient/node';
+import { LanguageClient, TextDocumentItem } from 'vscode-languageclient/node';
 import { debounce } from 'lodash';
 import {
     Uri,
@@ -6,7 +6,8 @@ import {
     EventEmitter,
     workspace,
     window,
-    Disposable
+    Disposable,
+    TextDocument
 } from 'vscode';
 
 type CompiledCodeResponse = {
@@ -20,7 +21,7 @@ export default class CompiledCodeContentProvider implements TextDocumentContentP
     static scheme = 'svelte-compiled';
 
     private didChangeEmitter = new EventEmitter<Uri>();
-    private selectedSvelteFile: string | undefined;
+    private selectedFile: string | undefined;
     private subscriptions: Disposable[] = [];
     private disposed = false;
 
@@ -42,7 +43,7 @@ export default class CompiledCodeContentProvider implements TextDocumentContentP
             // (debounced to prevent too many recompilations)
             workspace.onDidChangeTextDocument(
                 debounce(async (event) => {
-                    if (event.document.languageId == 'svelte' && this.selectedSvelteFile) {
+                    if (canShowCompiledCode(event.document) && this.selectedFile) {
                         this.refresh();
                     }
                 }, 500)
@@ -53,14 +54,14 @@ export default class CompiledCodeContentProvider implements TextDocumentContentP
             // This event sets the selectedSvelteFile when there is a different svelte file selected
             // and triggers a refresh of the preview window's content
             window.onDidChangeActiveTextEditor((editor) => {
-                if (editor?.document?.languageId !== 'svelte') {
+                if (!editor?.document || !canShowCompiledCode(editor?.document)) {
                     return;
                 }
 
                 const newFile = editor.document.uri.toString();
 
-                if (newFile !== this.selectedSvelteFile) {
-                    this.selectedSvelteFile = newFile;
+                if (newFile !== this.selectedFile) {
+                    this.selectedFile = newFile;
                     this.refresh();
                 }
             })
@@ -72,28 +73,50 @@ export default class CompiledCodeContentProvider implements TextDocumentContentP
     async provideTextDocumentContent(): Promise<string | undefined> {
         // If there is no selected svelte file, try to get it from the activeTextEditor
         // This should only happen when the svelte.showCompiledCodeToSide command is called the first time
-        if (!this.selectedSvelteFile && window.activeTextEditor) {
-            this.selectedSvelteFile = window.activeTextEditor.document.uri.toString();
+        if (!this.selectedFile && window.activeTextEditor) {
+            this.selectedFile = window.activeTextEditor.document.uri.toString();
         }
 
-        // Should not be possible but handle it anyway
-        if (!this.selectedSvelteFile) {
+        const param = this.selectedFile?.endsWith('.svelte')
+            ? this.selectedFile
+            : this.createDocumentIfExist();
+
+        if (!param || !this.selectedFile) {
             window.setStatusBarMessage('Svelte: no svelte file selected');
             return;
         }
 
         const response = await this.getLanguageClient().sendRequest<CompiledCodeResponse>(
             '$/getCompiledCode',
-            this.selectedSvelteFile
+            param
         );
 
-        const path = this.selectedSvelteFile.replace('file://', '');
+        const path = Uri.parse(this.selectedFile).fsPath;
 
         if (response?.js?.code) {
             return `/* Compiled: ${path} */\n${response.js.code}`;
         } else {
             window.setStatusBarMessage(`Svelte: fail to compile ${path}`, 3000);
         }
+    }
+
+    private createDocumentIfExist(): TextDocumentItem | undefined {
+        if (!this.selectedFile) {
+            return;
+        }
+
+        const doc = workspace.textDocuments.find((d) => d.uri.toString() === this.selectedFile);
+
+        if (!doc) {
+            return;
+        }
+
+        return TextDocumentItem.create(
+            doc.uri.toString(),
+            doc.languageId,
+            doc.version,
+            doc.getText()
+        );
     }
 
     dispose() {
@@ -105,4 +128,12 @@ export default class CompiledCodeContentProvider implements TextDocumentContentP
         this.subscriptions.length = 0;
         this.disposed = true;
     }
+}
+
+export function canShowCompiledCode(doc: TextDocument) {
+    return (
+        doc.languageId === 'svelte' ||
+        (doc.languageId === 'javascript' && doc.fileName.endsWith('.svelte.js')) ||
+        (doc.languageId === 'typescript' && doc.fileName.endsWith('.svelte.ts'))
+    );
 }
