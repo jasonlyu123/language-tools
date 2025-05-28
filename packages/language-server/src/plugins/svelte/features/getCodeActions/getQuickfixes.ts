@@ -1,3 +1,4 @@
+// @ts-ignore
 import { BaseNode, walk } from 'estree-walker';
 import { EOL } from 'os';
 // @ts-ignore
@@ -240,6 +241,7 @@ function findTagForRange(ast: BaseNode, range: ts.TextRange, isHtml: boolean) {
     let nearest: BaseNode = ast;
 
     walk(ast, {
+        // @ts-ignore
         enter(node, parent) {
             if (isHtml) {
                 const { type } = node;

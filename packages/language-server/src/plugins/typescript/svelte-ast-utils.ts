@@ -1,4 +1,5 @@
 import { Node } from 'estree';
+// @ts-ignore
 import { walk } from 'estree-walker';
 // @ts-ignore
 import { TemplateNode } from 'svelte/types/compiler/interfaces';
@@ -161,9 +162,11 @@ export interface SvelteNodeWalker {
 // especially in v3 which svelte 4 uses
 export function walkSvelteAst(htmlAst: TemplateNode, walker: SvelteNodeWalker) {
     walk(htmlAst as any, {
+        // @ts-ignore
         enter(node, parent, key, index) {
             walker.enter?.call(this as any, node as SvelteNode, parent as SvelteNode, key, index);
         },
+        // @ts-ignore
         leave(node, parent, key, index) {
             walker.leave?.call(this as any, node as SvelteNode, parent as SvelteNode, key, index);
         }

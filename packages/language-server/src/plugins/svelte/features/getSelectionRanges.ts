@@ -1,3 +1,4 @@
+// @ts-ignore
 import { walk } from 'estree-walker';
 import { Position, SelectionRange } from 'vscode-languageserver';
 import { mapSelectionRangeToParent, offsetAt, toRange } from '../../../lib/documents';
@@ -28,6 +29,7 @@ export async function getSelectionRange(svelteDoc: SvelteDocument, position: Pos
     let nearest: OffsetRange = html;
     let result: SelectionRange | undefined;
 
+    // @ts-ignore
     walk(html, {
         enter(node: Node, parent: Node) {
             if (!parent) {
