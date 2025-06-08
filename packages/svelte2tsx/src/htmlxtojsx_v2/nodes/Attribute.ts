@@ -6,28 +6,41 @@ import { Element } from './Element';
 import { InlineComponent } from './InlineComponent';
 
 /**
- * List taken from `svelte-jsx.d.ts` by searching for all attributes of type number
+ * List taken from `elements.d.ts` in Svelte core by searching for all attributes of type `number | undefined | null`;
  */
 const numberOnlyAttributes = new Set([
-    'cols',
-    'colspan',
-    'currenttime',
-    'defaultplaybackrate',
-    'high',
-    'low',
+    'aria-colcount',
+    'aria-colindex',
+    'aria-colspan',
+    'aria-level',
+    'aria-posinset',
+    'aria-rowcount',
+    'aria-rowindex',
+    'aria-rowspan',
+    'aria-setsize',
+    'aria-valuemax',
+    'aria-valuemin',
+    'aria-valuenow',
+    'results',
+    'span',
     'marginheight',
     'marginwidth',
-    'minlength',
     'maxlength',
+    'minlength',
+    'currenttime',
+    'defaultplaybackrate',
+    'volume',
+    'high',
+    'low',
     'optimum',
-    'rows',
-    'rowspan',
-    'size',
-    'span',
     'start',
-    'tabindex',
-    'results',
-    'volume'
+    'size',
+    'border',
+    'cols',
+    'rows',
+    'colspan',
+    'rowspan',
+    'tabindex'
 ]);
 
 /**
@@ -42,6 +55,7 @@ export function handleAttribute(
     attr: Attribute,
     parent: BaseNode,
     preserveCase: boolean,
+    svelte5Plus: boolean,
     element: Element | InlineComponent
 ): void {
     if (
@@ -80,7 +94,7 @@ export function handleAttribute(
                   element.addAttribute(name, value);
               }
             : (name: TransformationArray, value?: TransformationArray) => {
-                  if (attr.name.startsWith('--') && attr.value !== true) {
+                  if (attr.name.startsWith('--')) {
                       // CSS custom properties are not part of the props
                       // definition, so wrap them to not get "--xx is invalid prop" errors
                       name.unshift('...__sveltets_2_cssProp({');
@@ -96,7 +110,12 @@ export function handleAttribute(
      * lowercase the attribute name to make it adhere to our intrinsic elements definition
      */
     const transformAttributeCase = (name: string) => {
-        if (!preserveCase && !svgAttributes.find((x) => x == name)) {
+        if (
+            !preserveCase &&
+            !svgAttributes.find((x) => x == name) &&
+            !(element instanceof Element && element.tagName.includes('-')) &&
+            !(svelte5Plus && name.startsWith('on'))
+        ) {
             return name.toLowerCase();
         } else {
             return name;
@@ -109,7 +128,14 @@ export function handleAttribute(
 
     if (attributeValueIsOfType(attr.value, 'AttributeShorthand')) {
         // For the attribute shorthand, the name will be the mapped part
-        addAttribute([[attr.value[0].start, attr.value[0].end]]);
+        let [start, end] = [attr.value[0].start, attr.value[0].end];
+        if (start === end) {
+            // Loose parsing mode, we have an empty attribute value, e.g. {}
+            // For proper intellisense we need to make this a non-empty expression.
+            start--;
+            str.overwrite(start, end, ' ', { contentOnly: true });
+        }
+        addAttribute([[start, end]]);
         return;
     } else {
         let name =
@@ -134,7 +160,7 @@ export function handleAttribute(
     const attributeValue: TransformationArray = [];
 
     if (attr.value === true) {
-        attributeValue.push('true');
+        attributeValue.push(attr.name === 'popover' ? '""' : 'true');
         addAttribute(attributeName, attributeValue);
         return;
     }
@@ -154,10 +180,12 @@ export function handleAttribute(
                 return;
             }
 
+            const lastCharIndex = attrVal.end - 1;
             const hasBrackets =
-                str.original.lastIndexOf('}', attrVal.end) === attrVal.end - 1 ||
-                str.original.lastIndexOf('}"', attrVal.end) === attrVal.end - 1 ||
-                str.original.lastIndexOf("}'", attrVal.end) === attrVal.end - 1;
+                str.original[lastCharIndex] === '}' ||
+                ((str.original[lastCharIndex] === '"' || str.original[lastCharIndex] === "'") &&
+                    str.original[lastCharIndex - 1] === '}');
+
             const needsNumberConversion =
                 !hasBrackets &&
                 parent.type === 'Element' &&
@@ -167,8 +195,8 @@ export function handleAttribute(
             const quote = !includesTemplateLiteralQuote
                 ? '`'
                 : ['"', "'"].includes(str.original[attrVal.start - 1])
-                ? str.original[attrVal.start - 1]
-                : '"';
+                  ? str.original[attrVal.start - 1]
+                  : '"';
 
             if (!needsNumberConversion) {
                 attributeValue.push(quote);
@@ -187,7 +215,14 @@ export function handleAttribute(
 
             addAttribute(attributeName, attributeValue);
         } else if (attrVal.type == 'MustacheTag') {
-            attributeValue.push(rangeWithTrailingPropertyAccess(str.original, attrVal.expression));
+            let [start, end] = rangeWithTrailingPropertyAccess(str.original, attrVal.expression);
+            if (start === end) {
+                // Loose parsing mode, we have an empty attribute value, e.g. attr={}
+                // For proper intellisense we need to make this a non-empty expression.
+                start--;
+                str.overwrite(start, end, ' ', { contentOnly: true });
+            }
+            attributeValue.push([start, end]);
             addAttribute(attributeName, attributeValue);
         }
         return;

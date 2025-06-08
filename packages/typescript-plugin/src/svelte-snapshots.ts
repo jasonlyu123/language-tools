@@ -68,9 +68,46 @@ export class SvelteSnapshot {
         return originalOffset;
     }
 
+    getGeneratedTextSpan(textSpan: ts.TextSpan): ts.TextSpan | null {
+        const start = this.getGeneratedOffset(textSpan.start);
+        if (start === -1) {
+            return null;
+        }
+
+        // Assumption: We don't change identifiers itself, so we don't change ranges.
+        return {
+            start,
+            length: textSpan.length
+        };
+    }
+
+    getGeneratedOffset(originalOffset: number) {
+        if (!this.scriptInfo) {
+            return originalOffset;
+        }
+
+        const lineOffset = this.scriptInfo.positionToLineOffset(originalOffset);
+        const original = this.mapper.getGeneratedPosition({
+            line: lineOffset.line - 1,
+            character: lineOffset.offset - 1
+        });
+        if (original.line === -1) {
+            return -1;
+        }
+
+        this.toggleMappingMode(true);
+        const generatedOffset = this.scriptInfo.lineOffsetToPosition(
+            original.line + 1,
+            original.character + 1
+        );
+        this.toggleMappingMode(false);
+        this.debug('converted offset to', original, '/', generatedOffset);
+        return generatedOffset;
+    }
+
     setAndPatchScriptInfo(scriptInfo: ts.server.ScriptInfo) {
         // @ts-expect-error
-        scriptInfo.scriptKind = this.typescript.ScriptKind.TSX;
+        scriptInfo.scriptKind = this.typescript.ScriptKind.TS;
 
         const positionToLineOffset = scriptInfo.positionToLineOffset.bind(scriptInfo);
         scriptInfo.positionToLineOffset = (position) => {
@@ -225,19 +262,27 @@ export class SvelteSnapshot {
         }
         return snapshot.getText(0, snapshot.getLength());
     }
+
+    getOriginalText() {
+        return this.svelteCode;
+    }
 }
 
 export class SvelteSnapshotManager {
-    private snapshots = new Map<string, SvelteSnapshot>();
+    private snapshots: Map<string, SvelteSnapshot>;
 
     constructor(
         private typescript: typeof ts,
         private projectService: ts.server.ProjectService,
         private svelteOptions: { namespace: string },
         private logger: Logger,
-        private configManager: ConfigManager
+        private configManager: ConfigManager,
+        /** undefined if no node_modules with Svelte next to tsconfig.json */
+        private svelteCompiler: typeof import('svelte/compiler') | undefined
     ) {
-        this.patchProjectServiceReadFile();
+        this.patchProjectService();
+        // @ts-expect-error
+        this.snapshots = this.projectService[snapshots];
     }
 
     get(fileName: string) {
@@ -278,90 +323,78 @@ export class SvelteSnapshotManager {
         return snapshot;
     }
 
-    private patchProjectServiceReadFile() {
-        // @ts-ignore The projectService is shared across some instances, make sure we patch readFile only once
-        if (!this.projectService.host[onReadSvelteFile]) {
-            this.logger.log('patching projectService host readFile');
+    private patchProjectService() {
+        // @ts-expect-error The projectService is shared across some instances, make sure we patch only once
+        if (this.projectService[snapshots]) return;
 
-            // @ts-ignore
-            this.projectService.host[onReadSvelteFile] = [];
+        this.logger.log('patching projectService');
 
-            const readFile = this.projectService.host.readFile;
-            this.projectService.host.readFile = (path: string, encoding?: string | undefined) => {
-                if (!this.configManager.getConfig().enable) {
-                    return readFile(path, encoding);
+        // @ts-expect-error Snapshots are stored on the projectService, so they are shared across all instances
+        this.snapshots = this.projectService[snapshots] = new Map();
+
+        const readFile = this.projectService.host.readFile;
+        this.projectService.host.readFile = (path: string, encoding?: string | undefined) => {
+            if (!this.configManager.getConfig().enable) {
+                return readFile(path, encoding);
+            }
+
+            // The following (very hacky) first two checks make sure that the ambient module definitions
+            // that tell TS "every import ending with .svelte is a valid module" are removed.
+            // They exist in svelte2tsx and svelte to make sure that people don't
+            // get errors in their TS files when importing Svelte files and not using our TS plugin.
+            // If someone wants to get back the behavior they can add an ambient module definition
+            // on their own.
+            const normalizedPath = path.replace(/\\/g, '/');
+            if (normalizedPath.endsWith('node_modules/svelte/types/runtime/ambient.d.ts')) {
+                return '';
+            } else if (normalizedPath.endsWith('svelte2tsx/svelte-jsx.d.ts')) {
+                // Remove the dom lib reference to not load these ambient types in case
+                // the user has a tsconfig.json with different lib settings like in
+                // https://github.com/sveltejs/language-tools/issues/1733
+                const originalText = readFile(path) || '';
+                const toReplace = '/// <reference lib="dom" />';
+                return originalText.replace(toReplace, ' '.repeat(toReplace.length));
+            } else if (normalizedPath.endsWith('svelte2tsx/svelte-shims.d.ts')) {
+                let originalText = readFile(path) || '';
+                if (!originalText.includes('// -- start svelte-ls-remove --')) {
+                    return originalText; // uses an older version of svelte2tsx or is already patched
+                }
+                const startIdx = originalText.indexOf('// -- start svelte-ls-remove --');
+                const endIdx = originalText.indexOf('// -- end svelte-ls-remove --');
+                originalText =
+                    originalText.substring(0, startIdx) +
+                    ' '.repeat(endIdx - startIdx) +
+                    originalText.substring(endIdx);
+                return originalText;
+            } else if (isSvelteFilePath(path)) {
+                this.logger.debug('Read Svelte file:', path);
+                const svelteCode = readFile(path) || '';
+                const isTsFile = true; // TODO check file contents? TS might be okay with importing ts into js.
+                let code: string;
+                let mapper: SourceMapper;
+
+                try {
+                    const result = svelte2tsx(svelteCode, {
+                        filename: path.split('/').pop(),
+                        isTsFile,
+                        mode: 'ts',
+                        typingsNamespace: this.svelteOptions.namespace,
+                        // Don't search for compiler from current path - could be a different one from which we have loaded the svelte2tsx globals
+                        parse: this.svelteCompiler?.parse,
+                        version: this.svelteCompiler?.VERSION
+                    });
+                    code = result.code;
+                    mapper = new SourceMapper(result.map.mappings);
+                    this.logger.log('Successfully read Svelte file contents of', path);
+                } catch (e) {
+                    this.logger.log('Error loading Svelte file:', path, ' Using fallback.');
+                    this.logger.debug('Error:', e);
+                    // Return something either way, else "X is not a module" errors will appear
+                    // in the TS files that use this file.
+                    code = 'export default class extends Svelte2TsxComponent<any,any,any> {}';
+                    mapper = new SourceMapper('');
                 }
 
-                // The following (very hacky) first two checks make sure that the ambient module definitions
-                // that tell TS "every import ending with .svelte is a valid module" are removed.
-                // They exist in svelte2tsx and svelte to make sure that people don't
-                // get errors in their TS files when importing Svelte files and not using our TS plugin.
-                // If someone wants to get back the behavior they can add an ambient module definition
-                // on their own.
-                const normalizedPath = path.replace(/\\/g, '/');
-                if (normalizedPath.endsWith('node_modules/svelte/types/runtime/ambient.d.ts')) {
-                    return '';
-                } else if (normalizedPath.endsWith('svelte2tsx/svelte-jsx.d.ts')) {
-                    // Remove the dom lib reference to not load these ambient types in case
-                    // the user has a tsconfig.json with different lib settings like in
-                    // https://github.com/sveltejs/language-tools/issues/1733
-                    const originalText = readFile(path) || '';
-                    return originalText.replace('/// <reference lib="dom" />', '');
-                } else if (normalizedPath.endsWith('svelte2tsx/svelte-shims.d.ts')) {
-                    let originalText = readFile(path) || '';
-                    if (!originalText.includes('// -- start svelte-ls-remove --')) {
-                        return originalText; // uses an older version of svelte2tsx or is already patched
-                    }
-                    originalText =
-                        originalText.substring(
-                            0,
-                            originalText.indexOf('// -- start svelte-ls-remove --')
-                        ) +
-                        originalText.substring(
-                            originalText.indexOf('// -- end svelte-ls-remove --')
-                        );
-                    return originalText;
-                } else if (isSvelteFilePath(path)) {
-                    this.logger.debug('Read Svelte file:', path);
-                    const svelteCode = readFile(path) || '';
-                    const isTsFile = true; // TODO check file contents? TS might be okay with importing ts into js.
-                    let code: string;
-                    let mapper: SourceMapper;
-
-                    try {
-                        const result = svelte2tsx(svelteCode, {
-                            filename: path.split('/').pop(),
-                            isTsFile,
-                            mode: 'ts', // useNewTransformation
-                            typingsNamespace: this.svelteOptions.namespace
-                        });
-                        code = result.code;
-                        mapper = new SourceMapper(result.map.mappings);
-                        this.logger.log('Successfully read Svelte file contents of', path);
-                    } catch (e) {
-                        this.logger.log('Error loading Svelte file:', path, ' Using fallback.');
-                        this.logger.debug('Error:', e);
-                        // Return something either way, else "X is not a module" errors will appear
-                        // in the TS files that use this file.
-                        code = 'export default class extends Svelte2TsxComponent<any,any,any> {}';
-                        mapper = new SourceMapper('');
-                    }
-
-                    // @ts-ignore
-                    this.projectService.host[onReadSvelteFile].forEach((listener) =>
-                        listener(path, svelteCode, isTsFile, mapper)
-                    );
-
-                    return code;
-                } else {
-                    return readFile(path, encoding);
-                }
-            };
-        }
-
-        // @ts-ignore
-        this.projectService.host[onReadSvelteFile].push(
-            (path: string, svelteCode: string, isTsFile: boolean, mapper: SourceMapper) => {
                 const canonicalFilePath = this.projectService.toCanonicalFileName(path);
                 const existingSnapshot = this.snapshots.get(canonicalFilePath);
                 if (existingSnapshot) {
@@ -379,9 +412,13 @@ export class SvelteSnapshotManager {
                         )
                     );
                 }
+
+                return code;
+            } else {
+                return readFile(path, encoding);
             }
-        );
+        };
     }
 }
 
-const onReadSvelteFile = Symbol('sveltePluginPatchSymbol');
+const snapshots = Symbol('sveltePluginPatchSymbol');

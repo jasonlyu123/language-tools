@@ -1,13 +1,13 @@
 import MagicString from 'magic-string';
 import ts from 'typescript';
 import { surroundWithIgnoreComments } from '../../utils/ignore';
-import { preprendStr } from '../../utils/magic-string';
+import { getCurrentPrepends, preprendStr } from '../../utils/magic-string';
 import { extractIdentifiers, getNamesFromLabeledStatement } from '../utils/tsAst';
 
 /**
  * Tracks all store-usages as well as all variable declarations and imports in the component.
  *
- * In the modification-step at the end, all variable declartaions and imports which
+ * In the modification-step at the end, all variable declarations and imports which
  * were used as stores are appended with `let $xx = __sveltets_2_store_get(xx)` to create the store variables.
  */
 export class ImplicitStoreValues {
@@ -49,6 +49,18 @@ export class ImplicitStoreValues {
         return [...this.accessedStores.keys()];
     }
 
+    public getGlobals(): string[] {
+        const globals = new Set<string>(this.accessedStores);
+        this.variableDeclarations.forEach((node) =>
+            extractIdentifiers(node.name).forEach((id) => globals.delete(id.text))
+        );
+        this.reactiveDeclarations.forEach((node) =>
+            getNamesFromLabeledStatement(node).forEach((name) => globals.delete(name))
+        );
+        this.importStatements.forEach(({ name }) => name && globals.delete(name.getText()));
+        return [...globals].map((name) => `$${name}`);
+    }
+
     private attachStoreValueDeclarationToDecl(
         node: ts.VariableDeclaration,
         astOffset: number,
@@ -69,7 +81,15 @@ export class ImplicitStoreValues {
                 ? node.parent.declarations[node.parent.declarations.length - 1].getEnd()
                 : node.getEnd();
 
-        str.appendRight(nodeEnd + astOffset, storeDeclarations);
+        // Quick-fixing https://github.com/sveltejs/language-tools/issues/1950
+        // TODO think about a SourceMap-wrapper that does these things for us,
+        // or investigate altering the inner workings of SourceMap, or investigate
+        // if we can always use prependStr here (and elsewhere, too)
+        if (getCurrentPrepends(str, nodeEnd + astOffset).length) {
+            preprendStr(str, nodeEnd + astOffset, storeDeclarations);
+        } else {
+            str.appendRight(nodeEnd + astOffset, storeDeclarations);
+        }
     }
 
     private attachStoreValueDeclarationToReactiveAssignment(
@@ -89,9 +109,10 @@ export class ImplicitStoreValues {
         );
         const endPos = node.getEnd() + astOffset;
 
-        // Hack for quick-fixing https://github.com/sveltejs/language-tools/issues/1097
+        // Quick-fixing https://github.com/sveltejs/language-tools/issues/1097
         // TODO think about a SourceMap-wrapper that does these things for us,
-        // or investigate altering the inner workings of SourceMap
+        // or investigate altering the inner workings of SourceMap, or investigate
+        // if we can always use prependStr here (and elsewhere, too)
         if (str.original.charAt(endPos - 1) !== ';') {
             preprendStr(str, endPos, storeDeclarations);
         } else {

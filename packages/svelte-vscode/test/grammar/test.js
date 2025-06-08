@@ -40,12 +40,17 @@ async function snapShotTest() {
         'source.svelte',
         '-t',
         './test/grammar/samples/**/*.svelte',
-        ...allGrammars.reduce((previous, path) => [...previous, '-g', path], []),
+        ...allGrammars.reduce(
+            (previous, path) => [...previous, '-g', path],
+            /** @type {string[]} */ ([])
+        ),
         ...extraArgs
     ];
 
-    const code = await promisifySpawn(process.platform === 'win32' ? 'yarn.cmd' : 'yarn', args, {
-        stdio: 'inherit'
+    const code = await promisifySpawn(process.platform === 'win32' ? 'npx.cmd' : 'npx', args, {
+        stdio: 'inherit',
+        // https://nodejs.org/en/blog/vulnerability/april-2024-security-releases-2#command-injection-via-args-parameter-of-child_processspawn-without-shell-option-enabled-on-windows-cve-2024-27980---high
+        shell: true
     });
 
     if (code > 0) {

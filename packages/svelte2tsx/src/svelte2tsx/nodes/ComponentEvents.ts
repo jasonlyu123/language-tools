@@ -77,6 +77,10 @@ export class ComponentEvents {
         this.componentEventsInterface.setComponentEventsInterface(node, this.str, astOffset);
     }
 
+    hasEvents(): boolean {
+        return this.eventsClass.events.size > 0;
+    }
+
     hasStrictEvents(): boolean {
         return this.componentEventsInterface.isPresent() || this.strictEvents;
     }
@@ -224,17 +228,20 @@ class ComponentEventsFromEventsMap {
 
         const { dispatcherTyping, dispatcherName } = result;
 
-        if (dispatcherTyping && ts.isTypeLiteralNode(dispatcherTyping)) {
+        if (dispatcherTyping) {
             this.eventDispatchers.push({
                 name: dispatcherName,
                 typing: dispatcherTyping.getText()
             });
-            dispatcherTyping.members.filter(ts.isPropertySignature).forEach((member) => {
-                this.addToEvents(getName(member.name), {
-                    type: `CustomEvent<${member.type?.getText() || 'any'}>`,
-                    doc: getDoc(member)
+
+            if (ts.isTypeLiteralNode(dispatcherTyping)) {
+                dispatcherTyping.members.filter(ts.isPropertySignature).forEach((member) => {
+                    this.addToEvents(getName(member.name), {
+                        type: `CustomEvent<${member.type?.getText() || 'any'}>`,
+                        doc: getDoc(member)
+                    });
                 });
-            });
+            }
         } else {
             this.eventDispatchers.push({ name: dispatcherName });
             this.eventHandler

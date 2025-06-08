@@ -41,7 +41,7 @@ export default [
                     {
                         src: [
                             // workspace
-                            '../../node_modules/svelte2tsx/svelte*.d.ts',
+                            '../svelte2tsx/svelte*.d.ts',
                             // standalone
                             'node_modules/svelte2tsx/svelte*.d.ts'
                         ],
@@ -65,9 +65,10 @@ export default [
             'sade',
             'svelte',
             'svelte/compiler',
-            'svelte-preprocess',
-            'import-fresh', // because of https://github.com/sindresorhus/import-fresh/issues/18
             '@jridgewell/trace-mapping'
+            // import-fresh removed some time ago, no dependency uses it anymore.
+            // if it creeps back in check if the dependency uses a version that
+            // fixed https://github.com/sindresorhus/import-fresh/issues/18
         ]
     }
 ];

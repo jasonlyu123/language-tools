@@ -5,6 +5,7 @@ import { parseHtml } from './parseHtml';
 import { SvelteConfig, configLoader } from './configLoader';
 import { HTMLDocument } from 'vscode-html-languageservice';
 import { Range } from 'vscode-languageserver';
+import { importSvelte } from '../../importPackage';
 
 /**
  * Represents a text document contains a svelte component.
@@ -18,16 +19,37 @@ export class Document extends WritableDocument {
     configPromise: Promise<SvelteConfig | undefined>;
     config?: SvelteConfig;
     html!: HTMLDocument;
+    openedByClient = false;
     /**
      * Compute and cache directly because of performance reasons
      * and it will be called anyway.
      */
     private path = urlToPath(this.url);
 
-    constructor(public url: string, public content: string) {
+    private _compiler: typeof import('svelte/compiler') | undefined;
+    get compiler() {
+        return this.getCompiler();
+    }
+
+    private svelteVersion: [number, number] | undefined;
+    public get isSvelte5() {
+        return this.getSvelteVersion()[0] > 4;
+    }
+
+    constructor(
+        public url: string,
+        public content: string
+    ) {
         super();
         this.configPromise = configLoader.awaitConfig(this.getFilePath() || '');
         this.updateDocInfo();
+    }
+
+    private getCompiler() {
+        if (!this._compiler) {
+            this._compiler = importSvelte(this.getFilePath() || '');
+        }
+        return this._compiler;
     }
 
     private updateDocInfo() {
@@ -62,12 +84,18 @@ export class Document extends WritableDocument {
         }
     }
 
+    getSvelteVersion() {
+        if (!this.svelteVersion) {
+            const [major, minor] = this.compiler.VERSION.split('.');
+            this.svelteVersion = [Number(major), Number(minor)];
+        }
+        return this.svelteVersion;
+    }
+
     /**
      * Get text content
      */
     getText(range?: Range): string {
-        // Currently none of our own methods use the optional range parameter,
-        // but it's used by the HTML language service during hover
         if (range) {
             return this.content.substring(this.offsetAt(range.start), this.offsetAt(range.end));
         }
@@ -107,8 +135,8 @@ export class Document extends WritableDocument {
             (tag === 'style'
                 ? this.styleInfo?.attributes
                 : tag === 'script'
-                ? this.scriptInfo?.attributes || this.moduleScriptInfo?.attributes
-                : this.templateInfo?.attributes) || {};
+                  ? this.scriptInfo?.attributes || this.moduleScriptInfo?.attributes
+                  : this.templateInfo?.attributes) || {};
         const lang = attrs.lang || attrs.type || '';
         return lang.replace(/^text\//, '');
     }

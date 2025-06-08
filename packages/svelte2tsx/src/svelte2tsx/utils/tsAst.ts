@@ -8,7 +8,9 @@ export function isInterfaceOrTypeDeclaration(
 }
 
 export function findExportKeyword(node: ts.Node) {
-    return node.modifiers?.find((x) => x.kind == ts.SyntaxKind.ExportKeyword);
+    return ts.canHaveModifiers(node)
+        ? ts.getModifiers(node)?.find((x) => x.kind == ts.SyntaxKind.ExportKeyword)
+        : undefined;
 }
 
 /**
@@ -270,4 +272,8 @@ function isNewGroup(sourceFile: ts.SourceFile, topLevelImportDecl: ts.Node, scan
     }
 
     return false;
+}
+
+export function getTopLevelImports(sourceFile: ts.SourceFile): ts.ImportDeclaration[] {
+    return sourceFile.statements.filter(ts.isImportDeclaration).sort((a, b) => a.end - b.end);
 }

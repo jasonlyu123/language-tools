@@ -27,7 +27,6 @@ export function transform(
     str: MagicString,
     start: number,
     end: number,
-    _xxx: number, // TODO
     transformations: TransformationArray
 ) {
     const moves: Array<[number, number]> = [];
@@ -82,15 +81,31 @@ export function transform(
     }
 
     let removeStart = start;
-    for (const transformation of [...moves].sort((t1, t2) => t1[0] - t2[0])) {
+    const sortedMoves = [...moves].sort((t1, t2) => t1[0] - t2[0]);
+    // Remove everything between the transformations up until the end position
+    for (const transformation of sortedMoves) {
         if (removeStart < transformation[0]) {
-            if (deletePos !== moves.length && removeStart > deleteDest) {
+            if (
+                deletePos !== moves.length &&
+                removeStart > deleteDest &&
+                removeStart < end &&
+                transformation[0] < end
+            ) {
                 str.move(removeStart, transformation[0], end);
             }
-            // Use one space because of hover etc: This will make map deleted characters to the whitespace
-            str.overwrite(removeStart, transformation[0], ' ', { contentOnly: true });
+            if (transformation[0] < end) {
+                // Use one space because of hover etc: This will make map deleted characters to the whitespace
+                str.overwrite(removeStart, transformation[0], ' ', { contentOnly: true });
+            }
         }
         removeStart = transformation[1];
+    }
+
+    if (removeStart > end) {
+        // Reset the end to the last transformation before the end if there were transformations after the end
+        // so we still delete the correct range afterwards
+        let idx = sortedMoves.findIndex((m) => m[0] > end) - 1;
+        removeStart = sortedMoves[idx]?.[1] ?? end;
     }
 
     if (removeStart < end) {
@@ -112,6 +127,10 @@ export function transform(
     }
 
     for (let i = deletePos; i < moves.length; i++) {
+        // Can happen when there's not enough space left at the end of an unfininished element/component tag.
+        // Better to leave potentially slightly disarranged code than fail loudly
+        if (moves[i][1] >= end && moves[i][0] <= end) break;
+
         str.move(moves[i][0], moves[i][1], end);
     }
 }
@@ -211,4 +230,35 @@ export function rangeWithTrailingPropertyAccess(
     node: { start: number; end: number }
 ): [start: number, end: number] {
     return [node.start, withTrailingPropertyAccess(originalText, node.end)];
+}
+
+/**
+ * Get the end of the node, excluding the type annotation
+ */
+export function getEnd(node: any) {
+    return isTypescriptNode(node) ? node.expression.end : (node.typeAnnotation?.start ?? node.end);
+}
+
+export function isTypescriptNode(node: any) {
+    return (
+        node.type === 'TSAsExpression' ||
+        node.type === 'TSSatisfiesExpression' ||
+        node.type === 'TSNonNullExpression'
+    );
+}
+
+/**
+ * Returns `true` if the given block is implicitly closed, which could be the case in loose parsing mode.
+ * E.g.:
+ * ```html
+ * <div>
+ *   {#if x}
+ * </div>
+ * ```
+ * @param end
+ * @param block
+ * @returns
+ */
+export function isImplicitlyClosedBlock(end: number, block: Node) {
+    return end < (block.children[block.children.length - 1]?.end ?? block.expression.end);
 }

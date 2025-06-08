@@ -9,10 +9,10 @@ import {
     MarkupKind
 } from 'vscode-languageserver';
 import { SvelteTag, documentation, getLatestOpeningTag } from './SvelteTags';
-import { isInTag, Document } from '../../../lib/documents';
+import { Document } from '../../../lib/documents';
 import { AttributeContext, getAttributeContextAtPosition } from '../../../lib/documents/parseHtml';
 import { getModifierData } from './getModifierData';
-import { attributeCanHaveEventModifier } from './utils';
+import { attributeCanHaveEventModifier, inStyleOrScript } from './utils';
 
 const HTML_COMMENT_START = '<!--';
 
@@ -36,16 +36,12 @@ export function getCompletions(
 ): CompletionList | null {
     const offset = svelteDoc.offsetAt(position);
 
-    const isInStyleOrScript =
-        isInTag(position, svelteDoc.style) ||
-        isInTag(position, svelteDoc.script) ||
-        isInTag(position, svelteDoc.moduleScript);
     const lastCharactersBeforePosition = svelteDoc
         .getText()
         // use last 10 characters, should cover 99% of all cases
         .substr(Math.max(offset - 10, 0), Math.min(offset, 10));
     const precededByOpeningBracket = /[\s\S]*{\s*[#:/@]\w*$/.test(lastCharactersBeforePosition);
-    if (isInStyleOrScript) {
+    if (inStyleOrScript(svelteDoc, position)) {
         return null;
     }
 
@@ -125,7 +121,9 @@ function getCompletionsWithRegardToTriggerCharacter(
         return createCompletionItems([
             { tag: 'html', label: 'html' },
             { tag: 'debug', label: 'debug' },
-            { tag: 'const', label: 'const' }
+            { tag: 'const', label: 'const' },
+            { tag: 'render', label: 'render' },
+            { tag: 'attach', label: 'attach' }
         ]);
     }
 
@@ -143,7 +141,8 @@ function getCompletionsWithRegardToTriggerCharacter(
                 label: 'await then',
                 insertText: 'await $1 then $2}\n\t$3\n{/await'
             },
-            { tag: 'key', label: 'key', insertText: 'key $1}\n\t$2\n{/key' }
+            { tag: 'key', label: 'key', insertText: 'key $1}\n\t$2\n{/key' },
+            { tag: 'snippet', label: 'snippet', insertText: 'snippet $1($2)}\n\t$3\n{/snippet' }
         ]);
     }
 
@@ -207,6 +206,7 @@ function showCompletionWithRegardsToOpenedTags(
         ifOpen: CompletionList;
         awaitOpen: CompletionList;
         keyOpen?: CompletionList;
+        snippetOpen?: CompletionList;
     },
     svelteDoc: SvelteDocument,
     offset: number
@@ -220,6 +220,8 @@ function showCompletionWithRegardsToOpenedTags(
             return on.awaitOpen;
         case 'key':
             return on?.keyOpen ?? null;
+        case 'snippet':
+            return on.snippetOpen ?? null;
         default:
             return null;
     }

@@ -1,338 +1,62 @@
-import { Node } from 'estree-walker';
 import MagicString from 'magic-string';
-import { convertHtmlxToJsx } from '../htmlxtojsx';
-import { convertHtmlxToJsx as convertHtmlxToJsxNew } from '../htmlxtojsx_v2';
+import { convertHtmlxToJsx, TemplateProcessResult } from '../htmlxtojsx_v2';
 import { parseHtmlx } from '../utils/htmlxparser';
-import { ComponentDocumentation } from './nodes/ComponentDocumentation';
-import { ComponentEvents } from './nodes/ComponentEvents';
-import { EventHandler } from './nodes/event-handler';
-import { ExportedNames } from './nodes/ExportedNames';
-import {
-    handleScopeAndResolveForSlot,
-    handleScopeAndResolveLetVarForSlot
-} from './nodes/handleScopeAndResolveForSlot';
-import { ImplicitStoreValues } from './nodes/ImplicitStoreValues';
-import { Scripts } from './nodes/Scripts';
-import { SlotHandler } from './nodes/slot';
-import { Stores } from './nodes/Stores';
-import TemplateScope from './nodes/TemplateScope';
-import { processInstanceScriptContent } from './processInstanceScriptContent';
-import { processModuleScriptTag } from './processModuleScriptTag';
-import { ScopeStack } from './utils/Scope';
-import { Generics } from './nodes/Generics';
 import { addComponentExport } from './addComponentExport';
 import { createRenderFunction } from './createRenderFunction';
-import { TemplateNode } from 'svelte/types/compiler/interfaces';
-
-type TemplateProcessResult = {
-    /**
-     * The HTML part of the Svelte AST.
-     */
-    htmlAst: TemplateNode;
-    uses$$props: boolean;
-    uses$$restProps: boolean;
-    uses$$slots: boolean;
-    slots: Map<string, Map<string, string>>;
-    scriptTag: Node;
-    moduleScriptTag: Node;
-    /** To be added later as a comment on the default class export */
-    componentDocumentation: ComponentDocumentation;
-    events: ComponentEvents;
-    resolvedStores: string[];
-    usesAccessors: boolean;
-};
+import { ExportedNames } from './nodes/ExportedNames';
+import { Generics } from './nodes/Generics';
+import { ImplicitStoreValues } from './nodes/ImplicitStoreValues';
+import { processInstanceScriptContent } from './processInstanceScriptContent';
+import { createModuleAst, ModuleAst, processModuleScriptTag } from './processModuleScriptTag';
+import path from 'path';
+import { parse, VERSION } from 'svelte/compiler';
+import { getTopLevelImports } from './utils/tsAst';
 
 function processSvelteTemplate(
     str: MagicString,
-    options?: {
+    parse: typeof import('svelte/compiler').parse,
+    options: {
         emitOnTemplateError?: boolean;
         namespace?: string;
         accessors?: boolean;
-        mode?: 'ts' | 'tsx' | 'dts';
+        mode?: 'ts' | 'dts';
         typingsNamespace?: string;
+        svelte5Plus: boolean;
     }
 ): TemplateProcessResult {
-    const { htmlxAst, tags } = parseHtmlx(str.original, {
-        ...options,
-        useNewTransformation: options?.mode === 'ts'
-    });
-
-    let uses$$props = false;
-    let uses$$restProps = false;
-    let uses$$slots = false;
-    let usesAccessors = !!options.accessors;
-
-    const componentDocumentation = new ComponentDocumentation();
-
-    //track if we are in a declaration scope
-    const isDeclaration = { value: false };
-
-    //track $store variables since we are only supposed to give top level scopes special treatment, and users can declare $blah variables at higher scopes
-    //which prevents us just changing all instances of Identity that start with $
-
-    const scopeStack = new ScopeStack();
-    const stores = new Stores(scopeStack, isDeclaration);
-    const scripts = new Scripts(htmlxAst);
-
-    const handleSvelteOptions = (node: Node) => {
-        for (let i = 0; i < node.attributes.length; i++) {
-            const optionName = node.attributes[i].name;
-            const optionValue = node.attributes[i].value;
-
-            switch (optionName) {
-                case 'accessors':
-                    if (Array.isArray(optionValue)) {
-                        if (optionValue[0].type === 'MustacheTag') {
-                            usesAccessors = optionValue[0].expression.value;
-                        }
-                    } else {
-                        usesAccessors = true;
-                    }
-                    break;
-            }
-        }
-    };
-
-    const handleIdentifier = (node: Node) => {
-        if (node.name === '$$props') {
-            uses$$props = true;
-            return;
-        }
-        if (node.name === '$$restProps') {
-            uses$$restProps = true;
-            return;
-        }
-
-        if (node.name === '$$slots') {
-            uses$$slots = true;
-            return;
-        }
-    };
-
-    const handleStyleTag = (node: Node) => {
-        str.remove(node.start, node.end);
-    };
-
-    const slotHandler = new SlotHandler(str.original);
-    let templateScope = new TemplateScope();
-
-    const handleEach = (node: Node) => {
-        templateScope = templateScope.child();
-
-        if (node.context) {
-            handleScopeAndResolveForSlotInner(node.context, node.expression, node);
-        }
-    };
-
-    const handleAwait = (node: Node) => {
-        templateScope = templateScope.child();
-        if (node.value) {
-            handleScopeAndResolveForSlotInner(node.value, node.expression, node.then);
-        }
-        if (node.error) {
-            handleScopeAndResolveForSlotInner(node.error, node.expression, node.catch);
-        }
-    };
-
-    const handleComponentLet = (component: Node) => {
-        templateScope = templateScope.child();
-        const lets = slotHandler.getSlotConsumerOfComponent(component);
-
-        for (const { letNode, slotName } of lets) {
-            handleScopeAndResolveLetVarForSlot({
-                letNode,
-                slotName,
-                slotHandler,
-                templateScope,
-                component
-            });
-        }
-    };
-
-    const handleScopeAndResolveForSlotInner = (
-        identifierDef: Node,
-        initExpression: Node,
-        owner: Node
-    ) => {
-        handleScopeAndResolveForSlot({
-            identifierDef,
-            initExpression,
-            slotHandler,
-            templateScope,
-            owner
-        });
-    };
-
-    const eventHandler = new EventHandler();
-
-    const onHtmlxWalk = (node: Node, parent: Node, prop: string) => {
-        if (
-            prop == 'params' &&
-            (parent.type == 'FunctionDeclaration' || parent.type == 'ArrowFunctionExpression')
-        ) {
-            isDeclaration.value = true;
-        }
-        if (prop == 'id' && parent.type == 'VariableDeclarator') {
-            isDeclaration.value = true;
-        }
-
-        switch (node.type) {
-            case 'Comment':
-                componentDocumentation.handleComment(node);
-                break;
-            case 'Options':
-                handleSvelteOptions(node);
-                break;
-            case 'Identifier':
-                handleIdentifier(node);
-                stores.handleIdentifier(node, parent, prop);
-                eventHandler.handleIdentifier(node, parent, prop);
-                break;
-            case 'Transition':
-            case 'Action':
-            case 'Animation':
-                stores.handleDirective(node, str);
-                break;
-            case 'Slot':
-                slotHandler.handleSlot(node, templateScope);
-                break;
-            case 'Style':
-                handleStyleTag(node);
-                break;
-            case 'Element':
-                scripts.checkIfElementIsScriptTag(node, parent);
-                break;
-            case 'RawMustacheTag':
-                scripts.checkIfContainsScriptTag(node);
-                break;
-            case 'BlockStatement':
-                scopeStack.push();
-                break;
-            case 'FunctionDeclaration':
-                scopeStack.push();
-                break;
-            case 'ArrowFunctionExpression':
-                scopeStack.push();
-                break;
-            case 'EventHandler':
-                eventHandler.handleEventHandler(node, parent);
-                break;
-            case 'VariableDeclarator':
-                isDeclaration.value = true;
-                break;
-            case 'EachBlock':
-                handleEach(node);
-                break;
-            case 'AwaitBlock':
-                handleAwait(node);
-                break;
-            case 'InlineComponent':
-                handleComponentLet(node);
-                break;
-        }
-    };
-
-    const onHtmlxLeave = (node: Node, parent: Node, prop: string, _index: number) => {
-        if (
-            prop == 'params' &&
-            (parent.type == 'FunctionDeclaration' || parent.type == 'ArrowFunctionExpression')
-        ) {
-            isDeclaration.value = false;
-        }
-
-        if (prop == 'id' && parent.type == 'VariableDeclarator') {
-            isDeclaration.value = false;
-        }
-        const onTemplateScopeLeave = () => {
-            templateScope = templateScope.parent;
-        };
-
-        switch (node.type) {
-            case 'BlockStatement':
-                scopeStack.pop();
-                break;
-            case 'FunctionDeclaration':
-                scopeStack.pop();
-                break;
-            case 'ArrowFunctionExpression':
-                scopeStack.pop();
-                break;
-            case 'EachBlock':
-                onTemplateScopeLeave();
-                break;
-            case 'AwaitBlock':
-                onTemplateScopeLeave();
-                break;
-            case 'InlineComponent':
-                onTemplateScopeLeave();
-                break;
-        }
-    };
-
-    if (options.mode === 'ts') {
-        convertHtmlxToJsxNew(str, htmlxAst, onHtmlxWalk, onHtmlxLeave, {
-            preserveAttributeCase: options?.namespace == 'foreign',
-            typingsNamespace: options.typingsNamespace
-        });
-    } else {
-        convertHtmlxToJsx(str, htmlxAst, onHtmlxWalk, onHtmlxLeave, {
-            preserveAttributeCase: options?.namespace == 'foreign'
-        });
-    }
-
-    // resolve scripts
-    const { scriptTag, moduleScriptTag } = scripts.getTopLevelScriptTags();
-    if (options.mode !== 'ts') {
-        scripts.blankOtherScriptTags(str);
-    }
-
-    //resolve stores
-    const resolvedStores = stores.getStoreNames();
-
-    return {
-        htmlAst: htmlxAst,
-        moduleScriptTag,
-        scriptTag,
-        slots: slotHandler.getSlotDef(),
-        events: new ComponentEvents(
-            eventHandler,
-            tags.some((tag) => tag.attributes?.some((a) => a.name === 'strictEvents')),
-            str
-        ),
-        uses$$props,
-        uses$$restProps,
-        uses$$slots,
-        componentDocumentation,
-        resolvedStores,
-        usesAccessors
-    };
+    const { htmlxAst, tags } = parseHtmlx(str.original, parse, options);
+    return convertHtmlxToJsx(str, htmlxAst, tags, options);
 }
 
 export function svelte2tsx(
     svelte: string,
     options: {
+        parse?: typeof import('svelte/compiler').parse;
+        version?: string;
         filename?: string;
         isTsFile?: boolean;
         emitOnTemplateError?: boolean;
         namespace?: string;
-        mode?: 'ts' | 'tsx' | 'dts';
+        mode?: 'ts' | 'dts';
         accessors?: boolean;
         typingsNamespace?: string;
-    } = {}
+        noSvelteComponentTyped?: boolean;
+    } = { parse }
 ) {
     options.mode = options.mode || 'ts';
-    // TODO temporary to still keep old transformation around but not expose it anymore.
-    // Remove all old cold once we are sure the new transformation is working
-    if (options.mode === 'tsx') {
-        options.mode = 'ts';
-    }
+    options.version = options.version || VERSION;
 
     const str = new MagicString(svelte);
+    const basename = path.basename(options.filename || '');
+    const svelte5Plus = Number(options.version![0]) > 4;
+    const isTsFile = options?.isTsFile;
+
     // process the htmlx as a svelte template
     let {
         htmlAst,
         moduleScriptTag,
         scriptTag,
+        rootSnippets,
         slots,
         uses$$props,
         uses$$slots,
@@ -340,8 +64,12 @@ export function svelte2tsx(
         events,
         componentDocumentation,
         resolvedStores,
-        usesAccessors
-    } = processSvelteTemplate(str, options);
+        usesAccessors,
+        isRunes
+    } = processSvelteTemplate(str, options.parse || parse, {
+        ...options,
+        svelte5Plus
+    });
 
     /* Rearrange the script tags so that module is first, and instance second followed finally by the template
      * This is a bit convoluted due to some trouble I had with magic string. A simple str.move(start,end,0) for each script wasn't enough
@@ -350,7 +78,11 @@ export function svelte2tsx(
      */
     let instanceScriptTarget = 0;
 
+    let moduleAst: ModuleAst | undefined;
+
     if (moduleScriptTag) {
+        moduleAst = createModuleAst(str, moduleScriptTag);
+
         if (moduleScriptTag.start != 0) {
             //move our module tag to the top
             str.move(moduleScriptTag.start, moduleScriptTag.end, 0);
@@ -365,8 +97,8 @@ export function svelte2tsx(
         : instanceScriptTarget;
     const implicitStoreValues = new ImplicitStoreValues(resolvedStores, renderFunctionStart);
     //move the instance script and process the content
-    let exportedNames = new ExportedNames(str, 0);
-    let generics = new Generics(str, 0);
+    let exportedNames = new ExportedNames(str, 0, basename, isTsFile, svelte5Plus, isRunes);
+    let generics = new Generics(str, 0, { attributes: [] } as any);
     let uses$$SlotsInterface = false;
     if (scriptTag) {
         //ensure it is between the module script and the rest of the template (the variables need to be declared before the jsx template)
@@ -379,13 +111,22 @@ export function svelte2tsx(
             events,
             implicitStoreValues,
             options.mode,
-            /**hasModuleScripts */ !!moduleScriptTag
+            moduleAst,
+            isTsFile,
+            basename,
+            svelte5Plus,
+            isRunes
         );
         uses$$props = uses$$props || res.uses$$props;
         uses$$restProps = uses$$restProps || res.uses$$restProps;
         uses$$slots = uses$$slots || res.uses$$slots;
 
         ({ exportedNames, events, generics, uses$$SlotsInterface } = res);
+    }
+
+    exportedNames.usesAccessors = usesAccessors;
+    if (svelte5Plus) {
+        exportedNames.checkGlobalsForRunes(implicitStoreValues.getGlobals());
     }
 
     //wrap the script tag and template content in a function returning the slot and exports
@@ -396,12 +137,13 @@ export function svelte2tsx(
         slots,
         events,
         exportedNames,
-        isTsFile: options?.isTsFile,
         uses$$props,
         uses$$restProps,
         uses$$slots,
         uses$$SlotsInterface,
         generics,
+        svelte5Plus,
+        isTsFile,
         mode: options.mode
     });
 
@@ -415,28 +157,76 @@ export function svelte2tsx(
                 renderFunctionStart,
                 scriptTag || options.mode === 'ts' ? undefined : (input) => `</>;${input}<>`
             ),
-            options.mode === 'ts'
+            moduleAst
         );
+        if (!scriptTag) {
+            moduleAst.tsAst.forEachChild((node) =>
+                exportedNames.hoistableInterfaces.analyzeModuleScriptNode(node)
+            );
+        }
+    }
+
+    if (moduleScriptTag && rootSnippets.length > 0) {
+        exportedNames.hoistableInterfaces.analyzeSnippets(rootSnippets);
+    }
+
+    if (moduleScriptTag || scriptTag) {
+        let snippetHoistTargetForModule = 0;
+        if (rootSnippets.length) {
+            if (scriptTag) {
+                snippetHoistTargetForModule = scriptTag.start + 1; // +1 because imports are also moved at that position, and we want to move interfaces after imports
+            } else {
+                const imports = getTopLevelImports(moduleAst.tsAst);
+                const lastImport = imports[imports.length - 1];
+                snippetHoistTargetForModule = lastImport
+                    ? lastImport.end + moduleAst.astOffset
+                    : moduleAst.astOffset;
+                str.appendLeft(snippetHoistTargetForModule, '\n');
+            }
+        }
+
+        for (const [start, end, globals] of rootSnippets) {
+            const hoist_to_module =
+                moduleScriptTag &&
+                (globals.size === 0 ||
+                    [...globals.keys()].every((id) =>
+                        exportedNames.hoistableInterfaces.isAllowedReference(id)
+                    ));
+
+            if (hoist_to_module) {
+                str.move(start, end, snippetHoistTargetForModule);
+            } else if (scriptTag) {
+                str.move(start, end, renderFunctionStart);
+            }
+        }
     }
 
     addComponentExport({
         str,
         canHaveAnyProp: !exportedNames.uses$$Props && (uses$$props || uses$$restProps),
-        strictEvents: events.hasStrictEvents(),
-        isTsFile: options?.isTsFile,
+        events,
+        isTsFile,
         exportedNames,
         usesAccessors,
+        usesSlots: slots.size > 0,
         fileName: options?.filename,
         componentDocumentation,
         mode: options.mode,
-        generics
+        generics,
+        isSvelte5: svelte5Plus,
+        noSvelteComponentTyped: options.noSvelteComponentTyped
     });
 
     if (options.mode === 'dts') {
         // Prepend the import which is used for TS files
         // The other shims need to be provided by the user ambient-style,
         // for example through filenames.push(require.resolve('svelte2tsx/svelte-shims.d.ts'))
-        str.prepend('import { SvelteComponentTyped } from "svelte"\n' + '\n');
+        // TODO replace with SvelteComponent for Svelte 5, keep old for backwards compatibility with Svelte 3
+        if (options.noSvelteComponentTyped) {
+            str.prepend('import { SvelteComponent } from "svelte"\n' + '\n');
+        } else {
+            str.prepend('import { SvelteComponentTyped } from "svelte"\n' + '\n');
+        }
         let code = str.toString();
         // Remove all tsx occurences and the template part from the output
         code = code

@@ -5,7 +5,7 @@ interface ReferencedByGeneric {
         b: true;
         f: Foo;
     }
-function render/*Ωignore_startΩ*/<A,B extends ReferencedByGeneric>/*Ωignore_endΩ*/() {
+function $$render/*Ωignore_startΩ*/<A,B extends ReferencedByGeneric>/*Ωignore_endΩ*/() {
 
     
     interface ReferencesGeneric {
@@ -23,16 +23,17 @@ async () => {};
 return { props: {a: a , b: b} as {a: ReferencesGeneric, b: B}, slots: {}, events: {} }}
 class __sveltets_Render<A,B extends ReferencedByGeneric> {
     props() {
-        return render<A,B>().props;
+        return $$render<A,B>().props;
     }
     events() {
-        return __sveltets_2_with_any_event(render<A,B>()).events;
+        return __sveltets_2_with_any_event($$render<A,B>()).events;
     }
     slots() {
-        return render<A,B>().slots;
+        return $$render<A,B>().slots;
     }
 }
 
 
-export default class Input__SvelteComponent_<A,B extends ReferencedByGeneric> extends Svelte2TsxComponent<ReturnType<__sveltets_Render<A,B>['props']>, ReturnType<__sveltets_Render<A,B>['events']>, ReturnType<__sveltets_Render<A,B>['slots']>> {
+import { SvelteComponentTyped as __SvelteComponentTyped__ } from "svelte" 
+export default class Input__SvelteComponent_<A,B extends ReferencedByGeneric> extends __SvelteComponentTyped__<ReturnType<__sveltets_Render<A,B>['props']>, ReturnType<__sveltets_Render<A,B>['events']>, ReturnType<__sveltets_Render<A,B>['slots']>> {
 }

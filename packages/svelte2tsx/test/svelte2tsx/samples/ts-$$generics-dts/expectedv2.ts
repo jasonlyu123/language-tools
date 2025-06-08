@@ -1,8 +1,8 @@
 import { SvelteComponentTyped } from "svelte"
 
-
+;
 import { createEventDispatcher } from 'svelte';
-function render/*Ωignore_startΩ*/<A,B extends keyof A,C extends boolean>/*Ωignore_endΩ*/() {
+function $$render/*Ωignore_startΩ*/<A,B extends keyof A,C extends boolean>/*Ωignore_endΩ*/() {
 
     
 
@@ -20,16 +20,19 @@ function render/*Ωignore_startΩ*/<A,B extends keyof A,C extends boolean>/*Ωig
         return a;
     }
 ;
+async () => {
+
+ { __sveltets_createSlot("default", { c,});}};
 return { props: {a: a , b: b , c: c , getA: getA} as {a: A, b: B, c: C, getA?: typeof getA}, slots: {'default': {c:c}}, events: {...__sveltets_2_toEventTypings<{a: A}>()} }}
 class __sveltets_Render<A,B extends keyof A,C extends boolean> {
     props() {
-        return render<A,B,C>().props;
+        return $$render<A,B,C>().props;
     }
     events() {
-        return __sveltets_2_with_any_event(render<A,B,C>()).events;
+        return __sveltets_2_with_any_event($$render<A,B,C>()).events;
     }
     slots() {
-        return render<A,B,C>().slots;
+        return $$render<A,B,C>().slots;
     }
 }
 export type InputProps<A,B extends keyof A,C extends boolean> = ReturnType<__sveltets_Render<A,B,C>['props']>;

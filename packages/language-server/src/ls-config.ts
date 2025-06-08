@@ -44,7 +44,6 @@ const defaultLSConfig: LSConfig = {
     },
     svelte: {
         enable: true,
-        useNewTransformation: true,
         compilerWarnings: {},
         diagnostics: { enable: true },
         rename: { enable: true },
@@ -64,6 +63,7 @@ const defaultLSConfig: LSConfig = {
         hover: { enable: true },
         codeActions: { enable: true },
         selectionRange: { enable: true },
+        runesLegacyModeCodeLens: { enable: true },
         defaultScriptLanguage: 'none'
     }
 };
@@ -158,7 +158,6 @@ export type CompilerWarningsSettings = Record<string, 'ignore' | 'error'>;
 
 export interface LSSvelteConfig {
     enable: boolean;
-    useNewTransformation: boolean;
     compilerWarnings: CompilerWarningsSettings;
     diagnostics: {
         enable: boolean;
@@ -190,6 +189,7 @@ export interface LSSvelteConfig {
     selectionRange: {
         enable: boolean;
     };
+    runesLegacyModeCodeLens: { enable: boolean };
     defaultScriptLanguage: 'none' | 'ts';
 }
 
@@ -202,6 +202,9 @@ export interface TSUserConfig {
     preferences?: TsUserPreferencesConfig;
     suggest?: TSSuggestConfig;
     format?: TsFormatConfig;
+    inlayHints?: TsInlayHintsConfig;
+    referencesCodeLens?: TsReferenceCodeLensConfig;
+    implementationsCodeLens?: TsImplementationCodeLensConfig;
 }
 
 /**
@@ -218,6 +221,22 @@ export interface TsUserPreferencesConfig {
      * only in typescript config
      */
     includePackageJsonAutoImports?: ts.UserPreferences['includePackageJsonAutoImports'];
+
+    preferTypeOnlyAutoImports?: ts.UserPreferences['preferTypeOnlyAutoImports'];
+
+    autoImportSpecifierExcludeRegexes?: string[];
+
+    organizeImports?: TsOrganizeImportPreferencesConfig;
+}
+
+interface TsOrganizeImportPreferencesConfig {
+    accentCollation: ts.UserPreferences['organizeImportsAccentCollation'];
+    caseFirst: ts.UserPreferences['organizeImportsCaseFirst'] | 'default';
+    caseSensitivity: ts.UserPreferences['organizeImportsIgnoreCase'];
+    collation: ts.UserPreferences['organizeImportsCollation'];
+    locale: ts.UserPreferences['organizeImportsLocale'];
+    numericCollation: ts.UserPreferences['organizeImportsNumericCollation'];
+    typeOrder: ts.UserPreferences['organizeImportsTypeOrder'] | 'auto';
 }
 
 /**
@@ -237,6 +256,29 @@ export type TsFormatConfig = Omit<
     ts.FormatCodeSettings,
     'indentMultiLineObjectLiteralBeginningOnBlankLine' | keyof ts.EditorSettings
 >;
+export interface TsInlayHintsConfig {
+    enumMemberValues: { enabled: boolean } | undefined;
+    functionLikeReturnTypes: { enabled: boolean } | undefined;
+    parameterNames:
+        | {
+              enabled: ts.UserPreferences['includeInlayParameterNameHints'];
+              suppressWhenArgumentMatchesName: boolean;
+          }
+        | undefined;
+    parameterTypes: { enabled: boolean } | undefined;
+    propertyDeclarationTypes: { enabled: boolean } | undefined;
+    variableTypes: { enabled: boolean; suppressWhenTypeMatchesName: boolean } | undefined;
+}
+
+export interface TsReferenceCodeLensConfig {
+    showOnAllFunctions?: boolean | undefined;
+    enabled: boolean;
+}
+
+export interface TsImplementationCodeLensConfig {
+    enabled: boolean;
+    showOnInterfaceMethods?: boolean | undefined;
+}
 
 export type TsUserConfigLang = 'typescript' | 'javascript';
 
@@ -271,6 +313,11 @@ export class LSConfigManager {
         typescript: {},
         javascript: {}
     };
+    private rawTsUserConfig: Record<TsUserConfigLang, TSUserConfig> = {
+        typescript: {},
+        javascript: {}
+    };
+
     private resolvedAutoImportExcludeCache = new FileMap<string[]>();
     private tsFormatCodeOptions: Record<TsUserConfigLang, ts.FormatCodeSettings> = {
         typescript: this.getDefaultFormatCodeOptions(),
@@ -283,7 +330,7 @@ export class LSConfigManager {
     private lessConfig: CssConfig | undefined;
     private htmlConfig: HTMLConfig | undefined;
     private isTrusted = true;
-    private lspOptions: ClientCapabilities = {};
+    private clientCapabilities: ClientCapabilities | undefined;
 
     constructor() {
         this._updateTsUserPreferences('javascript', {});
@@ -293,18 +340,16 @@ export class LSConfigManager {
     /**
      * Updates config.
      */
-    update(config: DeepPartial<LSConfig>): void {
+    update(config: DeepPartial<LSConfig> | undefined): void {
         // Ideally we shouldn't need the merge here because all updates should be valid and complete configs.
         // But since those configs come from the client they might be out of synch with the valid config:
         // We might at some point in the future forget to synch config settings in all packages after updating the config.
         this.config = merge({}, defaultLSConfig, this.config, config);
         // Merge will keep arrays/objects if the new one is empty/has less entries,
         // therefore we need some extra checks if there are new settings
-        if (config.svelte?.compilerWarnings) {
+        if (config?.svelte?.compilerWarnings) {
             this.config.svelte.compilerWarnings = config.svelte.compilerWarnings;
         }
-        // TODO remove once we remove old transformation
-        this.config.svelte.useNewTransformation = true;
 
         this.notifyListeners();
     }
@@ -384,6 +429,7 @@ export class LSConfigManager {
         (['typescript', 'javascript'] as const).forEach((lang) => {
             if (config[lang]) {
                 this._updateTsUserPreferences(lang, config[lang]);
+                this.rawTsUserConfig[lang] = config[lang];
             }
         });
         this.notifyListeners();
@@ -404,6 +450,8 @@ export class LSConfigManager {
     }
 
     private _updateTsUserPreferences(lang: TsUserConfigLang, config: TSUserConfig) {
+        const { inlayHints } = config;
+
         this.tsUserPreferences[lang] = {
             ...this.tsUserPreferences[lang],
             importModuleSpecifierPreference: config.preferences?.importModuleSpecifier,
@@ -423,20 +471,71 @@ export class LSConfigManager {
             includeCompletionsWithClassMemberSnippets:
                 config.suggest?.classMemberSnippets?.enabled ?? true,
             includeCompletionsWithObjectLiteralMethodSnippets:
-                config.suggest?.objectLiteralMethodSnippets?.enabled ?? true
+                config.suggest?.objectLiteralMethodSnippets?.enabled ?? true,
+            preferTypeOnlyAutoImports: config.preferences?.preferTypeOnlyAutoImports,
+
+            // Although we don't support incompletion cache.
+            // But this will make ts resolve the module specifier more aggressively
+            // Which also makes the completion label detail show up in more cases
+            allowIncompleteCompletions: true,
+
+            includeInlayEnumMemberValueHints: inlayHints?.enumMemberValues?.enabled,
+            includeInlayFunctionLikeReturnTypeHints: inlayHints?.functionLikeReturnTypes?.enabled,
+            includeInlayParameterNameHints: inlayHints?.parameterNames?.enabled,
+            includeInlayParameterNameHintsWhenArgumentMatchesName:
+                inlayHints?.parameterNames?.suppressWhenArgumentMatchesName === false,
+            includeInlayFunctionParameterTypeHints: inlayHints?.parameterTypes?.enabled,
+            includeInlayVariableTypeHints: inlayHints?.variableTypes?.enabled,
+            includeInlayPropertyDeclarationTypeHints: inlayHints?.propertyDeclarationTypes?.enabled,
+            includeInlayVariableTypeHintsWhenTypeMatchesName:
+                inlayHints?.variableTypes?.suppressWhenTypeMatchesName === false,
+            interactiveInlayHints: true,
+
+            autoImportSpecifierExcludeRegexes:
+                config.preferences?.autoImportSpecifierExcludeRegexes,
+
+            organizeImportsAccentCollation: config.preferences?.organizeImports?.accentCollation,
+            organizeImportsCollation: config.preferences?.organizeImports?.collation,
+            organizeImportsCaseFirst: this.withDefaultAsUndefined(
+                config.preferences?.organizeImports?.caseFirst,
+                'default'
+            ),
+            organizeImportsIgnoreCase: this.withDefaultAsUndefined(
+                config.preferences?.organizeImports?.caseSensitivity,
+                'auto'
+            ),
+            organizeImportsLocale: config.preferences?.organizeImports?.locale,
+            organizeImportsNumericCollation: config.preferences?.organizeImports?.numericCollation,
+            organizeImportsTypeOrder: this.withDefaultAsUndefined(
+                config.preferences?.organizeImports?.typeOrder,
+                'auto'
+            )
         };
     }
 
-    getTsUserPreferences(lang: TsUserConfigLang, workspacePath: string | null): ts.UserPreferences {
+    private withDefaultAsUndefined<T, O extends T>(value: T, def: O): Exclude<T, O> | undefined {
+        return value === def ? undefined : (value as Exclude<T, O>);
+    }
+
+    getTsUserPreferences(
+        lang: TsUserConfigLang,
+        normalizedWorkspacePath: string | null
+    ): ts.UserPreferences {
         const userPreferences = this.tsUserPreferences[lang];
 
-        if (!workspacePath || !userPreferences.autoImportFileExcludePatterns) {
+        if (!normalizedWorkspacePath || !userPreferences.autoImportFileExcludePatterns) {
             return userPreferences;
         }
 
-        let autoImportFileExcludePatterns = this.resolvedAutoImportExcludeCache.get(workspacePath);
+        let autoImportFileExcludePatterns =
+            this.resolvedAutoImportExcludeCache.get(normalizedWorkspacePath);
 
         if (!autoImportFileExcludePatterns) {
+            const version = ts.version.split('.');
+            const major = parseInt(version[0]);
+            const minor = parseInt(version[1]);
+
+            const gte5_4 = major > 5 || (major === 5 && minor >= 4);
             autoImportFileExcludePatterns = userPreferences.autoImportFileExcludePatterns.map(
                 (p) => {
                     // Normalization rules: https://github.com/microsoft/TypeScript/pull/49578
@@ -446,23 +545,30 @@ export class LSConfigManager {
                         return p;
                     }
 
-                    return path.join(
-                        workspacePath,
-                        p.startsWith('*')
-                            ? '/' + slashNormalized
-                            : isRelative
-                            ? p
-                            : '/**/' + slashNormalized
-                    );
+                    // https://github.com/microsoft/vscode/pull/202762
+                    // ts 5.4+ supports leading wildcards
+                    const wildcardPrefix = gte5_4 ? '' : path.parse(normalizedWorkspacePath).root;
+                    return p.startsWith('*')
+                        ? wildcardPrefix + slashNormalized
+                        : isRelative
+                          ? path.join(normalizedWorkspacePath, p)
+                          : wildcardPrefix + '**/' + slashNormalized;
                 }
             );
-            this.resolvedAutoImportExcludeCache.set(workspacePath, autoImportFileExcludePatterns);
+            this.resolvedAutoImportExcludeCache.set(
+                normalizedWorkspacePath,
+                autoImportFileExcludePatterns
+            );
         }
 
         return {
             ...userPreferences,
             autoImportFileExcludePatterns
         };
+    }
+
+    getClientTsUserConfig(lang: TsUserConfigLang): TSUserConfig {
+        return this.rawTsUserConfig[lang];
     }
 
     updateCssConfig(config: CssConfig | undefined): void {
@@ -584,16 +690,9 @@ export class LSConfigManager {
             convertTabsToSpaces: !prettierConfig.useTabs,
             semicolons: useSemicolons
                 ? ts.SemicolonPreference.Insert
-                : ts.SemicolonPreference.Remove
+                : ts.SemicolonPreference.Remove,
+            tabSize: indentSize
         };
-    }
-
-    updateLspOptions(options: ClientCapabilities) {
-        this.lspOptions = options;
-    }
-
-    getLspOptions() {
-        return this.lspOptions;
     }
 
     private scheduledUpdate: NodeJS.Timeout | undefined;
@@ -605,5 +704,14 @@ export class LSConfigManager {
             this.scheduledUpdate = undefined;
             this.listeners.forEach((listener) => listener(this));
         });
+    }
+
+    updateClientCapabilities(clientCapabilities: ClientCapabilities) {
+        this.clientCapabilities = clientCapabilities;
+        this.notifyListeners();
+    }
+
+    getClientCapabilities() {
+        return this.clientCapabilities;
     }
 }

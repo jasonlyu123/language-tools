@@ -11,6 +11,8 @@ import { SvelteDocumentSnapshot } from '../DocumentSnapshot';
 import { LSAndTSDocResolver } from '../LSAndTSDocResolver';
 import { convertToTextSpan } from '../utils';
 import { isInGeneratedCode } from './utils';
+import { internalHelpers } from 'svelte2tsx';
+import { TokenType } from '../../../lib/semanticToken/semanticTokenLegend';
 
 const CONTENT_LENGTH_LIMIT = 50000;
 
@@ -66,28 +68,23 @@ export class SemanticTokensProviderImpl implements SemanticTokensProvider {
                 continue;
             }
 
-            const originalPosition = this.mapToOrigin(
+            const original = this.map(
                 textDocument,
                 tsDoc,
                 generatedOffset,
-                generatedLength
+                generatedLength,
+                encodedClassification,
+                classificationType
             );
-            if (!originalPosition) {
-                continue;
-            }
-
-            const [line, character, length] = originalPosition;
 
             // remove identifiers whose start and end mapped to the same location,
             // like the svelte2tsx inserted render function,
             // or reversed like Component.$on
-            if (length <= 0) {
+            if (!original || original[2] <= 0) {
                 continue;
             }
 
-            const modifier = this.getTokenModifierFromClassification(encodedClassification);
-
-            data.push([line, character, length, classificationType, modifier]);
+            data.push(original);
         }
 
         const sorted = data.sort((a, b) => {
@@ -102,18 +99,22 @@ export class SemanticTokensProviderImpl implements SemanticTokensProvider {
         return builder.build();
     }
 
-    private mapToOrigin(
+    private map(
         document: Document,
         snapshot: SvelteDocumentSnapshot,
         generatedOffset: number,
-        generatedLength: number
-    ): [line: number, character: number, length: number, start: number] | undefined {
+        generatedLength: number,
+        encodedClassification: number,
+        classificationType: number
+    ):
+        | [line: number, character: number, length: number, token: number, modifier: number]
+        | undefined {
+        const text = snapshot.getFullText();
         if (
-            isInGeneratedCode(
-                snapshot.getFullText(),
-                generatedOffset,
-                generatedOffset + generatedLength
-            )
+            isInGeneratedCode(text, generatedOffset, generatedOffset + generatedLength) ||
+            (encodedClassification === 2817 /* top level function */ &&
+                text.substring(generatedOffset, generatedOffset + generatedLength) ===
+                    internalHelpers.renderName)
         ) {
             return;
         }
@@ -131,7 +132,27 @@ export class SemanticTokensProviderImpl implements SemanticTokensProvider {
         const startOffset = document.offsetAt(startPosition);
         const endOffset = document.offsetAt(endPosition);
 
-        return [startPosition.line, startPosition.character, endOffset - startOffset, startOffset];
+        // Ensure components in the template get no semantic highlighting
+        if (
+            (classificationType === TokenType.class ||
+                classificationType === TokenType.type ||
+                classificationType === TokenType.parameter ||
+                classificationType === TokenType.variable ||
+                classificationType === TokenType.function) &&
+            snapshot.svelteNodeAt(startOffset)?.type === 'InlineComponent' &&
+            (document.getText().charCodeAt(startOffset - 1) === /* < */ 60 ||
+                document.getText().charCodeAt(startOffset - 1) === /* / */ 47)
+        ) {
+            return;
+        }
+
+        return [
+            startPosition.line,
+            startPosition.character,
+            endOffset - startOffset,
+            classificationType,
+            this.getTokenModifierFromClassification(encodedClassification)
+        ];
     }
 
     /**

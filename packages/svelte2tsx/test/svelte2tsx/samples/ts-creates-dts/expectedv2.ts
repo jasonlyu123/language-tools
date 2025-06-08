@@ -1,12 +1,12 @@
 import { SvelteComponentTyped } from "svelte"
 
-
-    export const foo = 'foo';
 ;
+    export const foo = 'foo';
+;;
 
 import Bar from './bar';
 import { createEventDispatcher } from 'svelte';
-function render() {
+function $$render() {
 
   
   
@@ -16,8 +16,14 @@ function render() {
 
   const dispatch = createEventDispatcher<{swipe: string}>();
 ;
+async () => {
+
+
+
+ { svelteHTML.createElement("button", { "on:click":undefined,});  }
+ { __sveltets_createSlot("default", {bar,}); }};
 return { props: {bar: bar , foobar: foobar} as {bar: Bar, foobar?: typeof foobar}, slots: {'default': {bar:bar}}, events: {...__sveltets_2_toEventTypings<{swipe: string}>(), 'click':__sveltets_2_mapElementEvent('click')} }}
-const __propDef = __sveltets_2_with_any_event(render());
+const __propDef = __sveltets_2_with_any_event($$render());
 export type InputProps = typeof __propDef.props;
 export type InputEvents = typeof __propDef.events;
 export type InputSlots = typeof __propDef.slots;

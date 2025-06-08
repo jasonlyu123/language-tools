@@ -16,7 +16,10 @@ import {
     TextEdit,
     Range,
     WorkspaceEdit,
-    LinkedEditingRanges
+    LinkedEditingRanges,
+    CompletionContext,
+    FoldingRange,
+    DocumentHighlight
 } from 'vscode-languageserver';
 import {
     DocumentManager,
@@ -30,26 +33,46 @@ import {
     HoverProvider,
     CompletionsProvider,
     RenameProvider,
-    LinkedEditingRangesProvider
+    LinkedEditingRangesProvider,
+    FoldingRangeProvider,
+    DocumentHighlightProvider
 } from '../interfaces';
 import { isInsideMoustacheTag, toRange } from '../../lib/documents/utils';
 import { isNotNullOrUndefined, possiblyComponent } from '../../utils';
 import { importPrettier } from '../../importPackage';
 import path from 'path';
 import { Logger } from '../../logger';
+import { indentBasedFoldingRangeForTag } from '../../lib/foldingRange/indentFolding';
+import { wordHighlightForTag } from '../../lib/documentHighlight/wordHighlight';
+
+// https://github.com/microsoft/vscode/blob/c6f507deeb99925e713271b1048f21dbaab4bd54/extensions/html/language-configuration.json#L34
+const wordPattern = /(-?\d*\.\d\w*)|([^`~!@$^&*()=+[{\]}\|;:'",.<>\/\s]+)/g;
+const attributeValuePlaceHolder = '="$1"';
 
 export class HTMLPlugin
-    implements HoverProvider, CompletionsProvider, RenameProvider, LinkedEditingRangesProvider
+    implements
+        HoverProvider,
+        CompletionsProvider,
+        RenameProvider,
+        LinkedEditingRangesProvider,
+        FoldingRangeProvider,
+        DocumentHighlightProvider
 {
     __name = 'html';
     private lang = getLanguageService({
         customDataProviders: this.getCustomDataProviders(),
-        useDefaultDataProvider: false
+        useDefaultDataProvider: false,
+        clientCapabilities: this.configManager.getClientCapabilities()
     });
     private documents = new WeakMap<Document, HTMLDocument>();
     private styleScriptTemplate = new Set(['template', 'style', 'script']);
 
-    constructor(docManager: DocumentManager, private configManager: LSConfigManager) {
+    private htmlTriggerCharacters = ['.', ':', '<', '"', '=', '/'];
+
+    constructor(
+        docManager: DocumentManager,
+        private configManager: LSConfigManager
+    ) {
         configManager.onChange(() =>
             this.lang.setDataProviders(false, this.getCustomDataProviders())
         );
@@ -76,7 +99,11 @@ export class HTMLPlugin
         return this.lang.doHover(document, position, html);
     }
 
-    async getCompletions(document: Document, position: Position): Promise<CompletionList | null> {
+    async getCompletions(
+        document: Document,
+        position: Position,
+        completionContext?: CompletionContext
+    ): Promise<CompletionList | null> {
         if (!this.featureEnabled('completions')) {
             return null;
         }
@@ -98,22 +125,27 @@ export class HTMLPlugin
             isIncomplete: false,
             items: []
         };
+
+        let doEmmetCompleteInner = (): CompletionList | null | undefined => null;
         if (
             this.configManager.getConfig().html.completions.emmet &&
             this.configManager.getEmmetConfig().showExpandedAbbreviation !== 'never'
         ) {
+            doEmmetCompleteInner = () =>
+                doEmmetComplete(document, position, 'html', this.configManager.getEmmetConfig());
+
             this.lang.setCompletionParticipants([
                 {
-                    onHtmlContent: () =>
-                        (emmetResults =
-                            doEmmetComplete(
-                                document,
-                                position,
-                                'html',
-                                this.configManager.getEmmetConfig()
-                            ) || emmetResults)
+                    onHtmlContent: () => (emmetResults = doEmmetCompleteInner() || emmetResults)
                 }
             ]);
+        }
+
+        if (
+            completionContext?.triggerCharacter &&
+            !this.htmlTriggerCharacters.includes(completionContext?.triggerCharacter)
+        ) {
+            return doEmmetCompleteInner() ?? null;
         }
 
         const results = this.isInComponentTag(html, document, position)
@@ -135,9 +167,21 @@ export class HTMLPlugin
                 : null;
 
         const svelteStrictMode = prettierConfig?.svelteStrictMode;
+        const startQuote = svelteStrictMode ? '"{' : '{';
+        const endQuote = svelteStrictMode ? '}"' : '}';
+
         items.forEach((item) => {
-            const startQuote = svelteStrictMode ? '"{' : '{';
-            const endQuote = svelteStrictMode ? '}"' : '}';
+            if (item.label.endsWith(':')) {
+                item.kind = CompletionItemKind.Keyword;
+
+                if (item.textEdit) {
+                    item.textEdit.newText = item.textEdit.newText.replace(
+                        attributeValuePlaceHolder,
+                        ''
+                    );
+                }
+            }
+
             if (!item.textEdit) {
                 return;
             }
@@ -145,24 +189,30 @@ export class HTMLPlugin
             if (item.label.startsWith('on:')) {
                 item.textEdit = {
                     ...item.textEdit,
-                    newText: item.textEdit.newText.replace('="$1"', `$2=${startQuote}$1${endQuote}`)
+                    newText: item.textEdit.newText.replace(
+                        attributeValuePlaceHolder,
+                        `$2=${startQuote}$1${endQuote}`
+                    )
                 };
+                // In Svelte 5, people should use `onclick` instead of `on:click`
+                if (document.isSvelte5) {
+                    item.sortText = 'z' + (item.sortText ?? item.label);
+                }
             }
 
             if (item.label.startsWith('bind:')) {
                 item.textEdit = {
                     ...item.textEdit,
-                    newText: item.textEdit.newText.replace('="$1"', `=${startQuote}$1${endQuote}`)
+                    newText: item.textEdit.newText.replace(
+                        attributeValuePlaceHolder,
+                        `=${startQuote}$1${endQuote}`
+                    )
                 };
             }
         });
 
         return CompletionList.create(
-            [
-                ...this.toCompletionItems(items),
-                ...this.getLangCompletions(items),
-                ...emmetResults.items
-            ],
+            [...items, ...this.getLangCompletions(items), ...emmetResults.items],
             // Emmet completions change on every keystroke, so they are never complete
             emmetResults.items.length > 0
         );
@@ -185,7 +235,7 @@ export class HTMLPlugin
     }
 
     private isInComponentTag(html: HTMLDocument, document: Document, position: Position) {
-        return !!getNodeIfIsInComponentStartTag(html, document.offsetAt(position));
+        return !!getNodeIfIsInComponentStartTag(html, document, document.offsetAt(position));
     }
 
     private getLangCompletions(completions: CompletionItem[]): CompletionItem[] {
@@ -290,7 +340,7 @@ export class HTMLPlugin
         }
         const tagNameStart = node.start + '<'.length;
 
-        return toRange(document.getText(), tagNameStart, tagNameStart + node.tag.length);
+        return toRange(document, tagNameStart, tagNameStart + node.tag.length);
     }
 
     getLinkedEditingRanges(document: Document, position: Position): LinkedEditingRanges | null {
@@ -309,7 +359,109 @@ export class HTMLPlugin
             return null;
         }
 
-        return { ranges };
+        // Note that `.` is excluded from the word pattern. This is intentional to support property access in Svelte component tags.
+        return {
+            ranges,
+            wordPattern:
+                '(-?\\d*\\.\\d\\w*)|([^\\`\\~\\!\\@\\#\\^\\&\\*\\(\\)\\=\\+\\[\\{\\]\\}\\\\\\|\\;\\:\\\'\\"\\,\\<\\>\\/\\s]+)'
+        };
+    }
+
+    getFoldingRanges(document: Document): FoldingRange[] {
+        const result = this.lang.getFoldingRanges(document);
+        const templateRange = document.templateInfo
+            ? indentBasedFoldingRangeForTag(document, document.templateInfo)
+            : [];
+
+        const ARROW = '=>';
+
+        if (!document.getText().includes(ARROW)) {
+            return result.concat(templateRange);
+        }
+
+        const byEnd = new Map<number, FoldingRange[]>();
+        for (const fold of result) {
+            byEnd.set(fold.endLine, (byEnd.get(fold.endLine) ?? []).concat(fold));
+        }
+
+        let startIndex = 0;
+        while (startIndex < document.getTextLength()) {
+            const index = document.getText().indexOf(ARROW, startIndex);
+            startIndex = index + ARROW.length;
+
+            if (index === -1) {
+                break;
+            }
+            const position = document.positionAt(index);
+            const isInStyleOrScript =
+                isInTag(position, document.styleInfo) ||
+                isInTag(position, document.scriptInfo) ||
+                isInTag(position, document.moduleScriptInfo);
+
+            if (isInStyleOrScript) {
+                continue;
+            }
+
+            const tag = document.html.findNodeAt(index);
+
+            // our version of html document patched it so it's within the start tag
+            // but not the folding range returned by the language service
+            // which uses unpatched scanner
+            if (!tag.startTagEnd || index > tag.startTagEnd) {
+                continue;
+            }
+
+            const tagStartPosition = document.positionAt(tag.start);
+            const range = byEnd
+                .get(position.line)
+                ?.find((r) => r.startLine === tagStartPosition.line);
+
+            const newEndLine = document.positionAt(tag.end).line - 1;
+            if (newEndLine <= tagStartPosition.line) {
+                continue;
+            }
+
+            if (range) {
+                range.endLine = newEndLine;
+            } else {
+                result.push({
+                    startLine: tagStartPosition.line,
+                    endLine: newEndLine
+                });
+            }
+        }
+
+        return result.concat(templateRange);
+    }
+
+    findDocumentHighlight(document: Document, position: Position): DocumentHighlight[] | null {
+        const html = this.documents.get(document);
+        if (!html) {
+            return null;
+        }
+
+        const templateResult = wordHighlightForTag(
+            document,
+            position,
+            document.templateInfo,
+            wordPattern
+        );
+
+        if (templateResult) {
+            return templateResult;
+        }
+
+        const node = html.findNodeAt(document.offsetAt(position));
+        if (possiblyComponent(node)) {
+            return null;
+        }
+        const result = this.lang.findDocumentHighlights(document, position, html);
+
+        if (!result.length) {
+            return null;
+        }
+
+        return result;
     }
 
     /**

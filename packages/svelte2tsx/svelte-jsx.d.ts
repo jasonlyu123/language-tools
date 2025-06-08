@@ -1,4 +1,6 @@
 /// <reference lib="dom" />
+// @ts-nocheck
+// nocheck because we don't want to adjust this anymore (only used for Svelte 3)
 
 declare namespace svelteHTML {
 
@@ -238,6 +240,7 @@ declare namespace svelteHTML {
     // Svelte specific
     'svelte:window': HTMLProps<'svelte:window', HTMLAttributes>;
     'svelte:body': HTMLProps<'svelte:body', HTMLAttributes>;
+    'svelte:document': HTMLProps<'svelte:document', HTMLAttributes>;
     'svelte:fragment': { slot?: string };
     'svelte:options': { [name: string]: any };
     'svelte:head': { [name: string]: any };
@@ -293,7 +296,7 @@ declare namespace svelte.JSX {
   type MessageEventHandler<T extends EventTarget> = EventHandler<MessageEvent, T>;
 
   /** @deprecated DO NOT USE, WILL BE REMOVED SOON */
-  type AttributeNames = 
+  type AttributeNames =
   |'oncopy'
   |'oncut'
   |'onpaste'
@@ -562,7 +565,7 @@ declare namespace svelte.JSX {
   |'unselectable';
 
   /**
-   * @deprecated use the types from `svelte/elements` instead, or the .
+   * @deprecated use the types from `svelte/elements` instead
    * For more info see https://github.com/sveltejs/language-tools/blob/master/docs/preprocessors/typescript.md#im-getting-deprecation-warnings-for-sveltejsx--i-want-to-migrate-to-the-new-typings
    */
   interface DOMAttributes<T extends EventTarget> {
@@ -670,7 +673,7 @@ declare namespace svelte.JSX {
   }
 
   /**
-   * @deprecated use the types from `svelte/elements` instead, or the .
+   * @deprecated use the types from `svelte/elements` instead
    * For more info see https://github.com/sveltejs/language-tools/blob/master/docs/preprocessors/typescript.md#im-getting-deprecation-warnings-for-sveltejsx--i-want-to-migrate-to-the-new-typings
    */
   interface AriaAttributes {
@@ -725,7 +728,7 @@ declare namespace svelte.JSX {
   }
 
   /**
-   * @deprecated use the types from `svelte/elements` instead, or the .
+   * @deprecated use the types from `svelte/elements` instead
    * For more info see https://github.com/sveltejs/language-tools/blob/master/docs/preprocessors/typescript.md#im-getting-deprecation-warnings-for-sveltejsx--i-want-to-migrate-to-the-new-typings
    */
   interface HTMLAttributes<T extends EventTarget> extends AriaAttributes, DOMAttributes<T> {
@@ -894,15 +897,17 @@ declare namespace svelte.JSX {
     results?: number | undefined | null;
     security?: string | undefined | null;
     unselectable?: boolean | undefined | null;
-    
+
+    'data-sveltekit-keepfocus'?: true | '' | 'off' | undefined | null;
     'data-sveltekit-noscroll'?: true | '' | 'off' | undefined | null;
     'data-sveltekit-preload-code'?: true | '' | 'eager' | 'viewport' | 'hover' | 'tap' | 'off' | undefined | null;
     'data-sveltekit-preload-data'?: true | '' | 'hover' | 'tap' | 'off' | undefined | null;
     'data-sveltekit-reload'?: true | '' | 'off' | undefined | null;
+    'data-sveltekit-replacestate'?: true | '' | 'off' | undefined | null;
   }
-  
+
   /**
-   * @deprecated use the types from `svelte/elements` instead, or the .
+   * @deprecated use the types from `svelte/elements` instead
    * For more info see https://github.com/sveltejs/language-tools/blob/master/docs/preprocessors/typescript.md#im-getting-deprecation-warnings-for-sveltejsx--i-want-to-migrate-to-the-new-typings
    */
   interface SVGAttributes<T extends EventTarget> extends AriaAttributes, DOMAttributes<T> {
@@ -1170,18 +1175,18 @@ declare namespace svelte.JSX {
   }
 
   /**
-   * @deprecated use the types from `svelte/elements` instead, or the .
+   * @deprecated use the types from `svelte/elements` instead
    * For more info see https://github.com/sveltejs/language-tools/blob/master/docs/preprocessors/typescript.md#im-getting-deprecation-warnings-for-sveltejsx--i-want-to-migrate-to-the-new-typings
    */
   interface HTMLProps<T extends EventTarget> extends HTMLAttributes<T> {}
   /**
-   * @deprecated use the types from `svelte/elements` instead, or the .
+   * @deprecated use the types from `svelte/elements` instead
    * For more info see https://github.com/sveltejs/language-tools/blob/master/docs/preprocessors/typescript.md#im-getting-deprecation-warnings-for-sveltejsx--i-want-to-migrate-to-the-new-typings
    */
   interface SVGProps<T extends EventTarget> extends SVGAttributes<T> {}
 
   /**
-   * @deprecated use the types from `svelte/elements` instead, or the .
+   * @deprecated use the types from `svelte/elements` instead
    * For more info see https://github.com/sveltejs/language-tools/blob/master/docs/preprocessors/typescript.md#im-getting-deprecation-warnings-for-sveltejsx--i-want-to-migrate-to-the-new-typings
    */
   interface SvelteInputProps extends HTMLProps<HTMLInputElement> {
@@ -1191,7 +1196,7 @@ declare namespace svelte.JSX {
   }
 
   /**
-   * @deprecated use the types from `svelte/elements` instead, or the .
+   * @deprecated use the types from `svelte/elements` instead
    * For more info see https://github.com/sveltejs/language-tools/blob/master/docs/preprocessors/typescript.md#im-getting-deprecation-warnings-for-sveltejsx--i-want-to-migrate-to-the-new-typings
    */
   interface SvelteWindowProps  {
@@ -1236,7 +1241,7 @@ declare namespace svelte.JSX {
   }
 
   /**
-   * @deprecated use the types from `svelte/elements` instead, or the .
+   * @deprecated use the types from `svelte/elements` instead
    * For more info see https://github.com/sveltejs/language-tools/blob/master/docs/preprocessors/typescript.md#im-getting-deprecation-warnings-for-sveltejsx--i-want-to-migrate-to-the-new-typings
    */
   interface SapperAnchorProps {
@@ -1246,7 +1251,7 @@ declare namespace svelte.JSX {
   }
 
   /**
-   * @deprecated use the types from `svelte/elements` instead, or the .
+   * @deprecated use the types from `svelte/elements` instead
    * For more info see https://github.com/sveltejs/language-tools/blob/master/docs/preprocessors/typescript.md#im-getting-deprecation-warnings-for-sveltejsx--i-want-to-migrate-to-the-new-typings
    */
   interface SvelteMediaTimeRange {
@@ -1255,7 +1260,7 @@ declare namespace svelte.JSX {
   }
 
   /**
-   * @deprecated use the types from `svelte/elements` instead, or the .
+   * @deprecated use the types from `svelte/elements` instead
    * For more info see https://github.com/sveltejs/language-tools/blob/master/docs/preprocessors/typescript.md#im-getting-deprecation-warnings-for-sveltejsx--i-want-to-migrate-to-the-new-typings
    */
   interface SvelteMediaProps {
@@ -1284,7 +1289,7 @@ declare namespace svelte.JSX {
   }
 
   /**
-   * @deprecated use the types from `svelte/elements` instead, or the .
+   * @deprecated use the types from `svelte/elements` instead
    * For more info see https://github.com/sveltejs/language-tools/blob/master/docs/preprocessors/typescript.md#im-getting-deprecation-warnings-for-sveltejsx--i-want-to-migrate-to-the-new-typings
    */
   interface SvelteVideoProps extends SvelteMediaProps {
@@ -1294,7 +1299,7 @@ declare namespace svelte.JSX {
   }
 
   /**
-   * @deprecated use the types from `svelte/elements` instead, or the .
+   * @deprecated use the types from `svelte/elements` instead
    * For more info see https://github.com/sveltejs/language-tools/blob/master/docs/preprocessors/typescript.md#im-getting-deprecation-warnings-for-sveltejsx--i-want-to-migrate-to-the-new-typings
    */
   interface IntrinsicElements {

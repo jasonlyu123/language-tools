@@ -12,7 +12,8 @@
             "outFiles": ["${workspaceRoot}/packages/svelte-vscode/dist/**/*.js"],
             "preLaunchTask": "npm: watch",
             "env": {
-                "TSS_DEBUG": "5859"
+                "TSS_DEBUG": "5859",
+                "TSS_REMOTE_DEBUG": "5859"
             }
         },
         {
@@ -24,23 +25,6 @@
             "env": {
                 "TS_NODE_COMPILER_OPTIONS": "{\"esModuleInterop\":true, \"target\": \"es2018\"}",
                 "TS_NODE_TRANSPILE_ONLY": "true"
-            },
-            "console": "integratedTerminal",
-            "internalConsoleOptions": "neverOpen"
-        },
-        {
-            "type": "node",
-            "request": "launch",
-            "name": "Run tests with debugger",
-            "program": "${workspaceFolder}/node_modules/mocha/bin/_mocha",
-            "args": [
-                "-r",
-                "ts-node/register",
-                "--colors",
-                "${workspaceFolder}/packages/*/test/**/*.ts"
-            ],
-            "env": {
-                "TS_NODE_COMPILER_OPTIONS": "{\"esModuleInterop\":true}"
             },
             "console": "integratedTerminal",
             "internalConsoleOptions": "neverOpen"

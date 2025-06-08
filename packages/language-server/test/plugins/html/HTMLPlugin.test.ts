@@ -6,11 +6,18 @@ import {
     CompletionItem,
     TextEdit,
     CompletionItemKind,
-    InsertTextFormat
+    InsertTextFormat,
+    CompletionTriggerKind,
+    FoldingRange,
+    DocumentHighlightKind
 } from 'vscode-languageserver';
 import { HTMLPlugin } from '../../../src/plugins';
 import { DocumentManager, Document } from '../../../src/lib/documents';
 import { LSConfigManager } from '../../../src/ls-config';
+import { DocumentHighlight } from 'vscode-languageserver-types';
+import { VERSION } from 'svelte/compiler';
+
+const isSvelte5Plus = Number(VERSION.split('.')[0]) >= 5;
 
 describe('HTML Plugin', () => {
     function setup(content: string) {
@@ -18,7 +25,7 @@ describe('HTML Plugin', () => {
         const docManager = new DocumentManager(() => document);
         const configManager = new LSConfigManager();
         const plugin = new HTMLPlugin(docManager, configManager);
-        docManager.openDocument(<any>'some doc');
+        docManager.openClientDocument(<any>'some doc');
         return { plugin, document, configManager };
     }
 
@@ -28,7 +35,10 @@ describe('HTML Plugin', () => {
         assert.deepStrictEqual(plugin.doHover(document, Position.create(0, 2)), <Hover>{
             contents: {
                 kind: 'markdown',
-                value: 'The h1 element represents a section heading.\n\n[MDN Reference](https://developer.mozilla.org/docs/Web/HTML/Element/Heading_Elements)'
+                value:
+                    'The h1 element represents a section heading.\n\n' +
+                    '![Baseline icon](data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgiIGhlaWdodD0iMTAiIHZpZXdCb3g9IjAgMCA1NDAgMzAwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogIDxzdHlsZT4KICAgIC5ncmVlbi1zaGFwZSB7CiAgICAgIGZpbGw6ICNDNEVFRDA7IC8qIExpZ2h0IG1vZGUgKi8KICAgIH0KCiAgICBAbWVkaWEgKHByZWZlcnMtY29sb3Itc2NoZW1lOiBkYXJrKSB7CiAgICAgIC5ncmVlbi1zaGFwZSB7CiAgICAgICAgZmlsbDogIzEyNTIyNTsgLyogRGFyayBtb2RlICovCiAgICAgIH0KICAgIH0KICA8L3N0eWxlPgogIDxwYXRoIGQ9Ik00MjAgMzBMMzkwIDYwTDQ4MCAxNTBMMzkwIDI0MEwzMzAgMTgwTDMwMCAyMTBMMzkwIDMwMEw1NDAgMTUwTDQyMCAzMFoiIGNsYXNzPSJncmVlbi1zaGFwZSIvPgogIDxwYXRoIGQ9Ik0xNTAgMEwzMCAxMjBMNjAgMTUwTDE1MCA2MEwyMTAgMTIwTDI0MCA5MEwxNTAgMFoiIGNsYXNzPSJncmVlbi1zaGFwZSIvPgogIDxwYXRoIGQ9Ik0zOTAgMEw0MjAgMzBMMTUwIDMwMEwwIDE1MEwzMCAxMjBMMTUwIDI0MEwzOTAgMFoiIGZpbGw9IiMxRUE0NDYiLz4KPC9zdmc+) _Widely available across major browsers (Baseline since 2015)_\n\n' +
+                    '[MDN Reference](https://developer.mozilla.org/docs/Web/HTML/Reference/Elements/Heading_Elements)'
             },
 
             range: Range.create(0, 1, 0, 3)
@@ -65,7 +75,7 @@ describe('HTML Plugin', () => {
         const completions = await plugin.getCompletions(document, Position.create(0, 7));
         const onClick = completions?.items.find((item) => item.label === 'on:click');
 
-        assert.deepStrictEqual(onClick, <CompletionItem>{
+        const expected: CompletionItem = {
             label: 'on:click',
             kind: CompletionItemKind.Value,
             documentation: {
@@ -78,7 +88,13 @@ describe('HTML Plugin', () => {
             ),
             insertTextFormat: InsertTextFormat.Snippet,
             command: undefined
-        });
+        };
+
+        if (isSvelte5Plus) {
+            expected.sortText = 'zon:click';
+        }
+
+        assert.deepStrictEqual(onClick, expected);
     });
 
     it('provide event handler completions in svelte strict mode', async () => {
@@ -152,6 +168,26 @@ describe('HTML Plugin', () => {
             completions!.items.find((item) => item.label === 'style (lang="less")'),
             undefined
         );
+    });
+
+    it('skip HTML completions for non-HTML trigger characters', async () => {
+        const { plugin, document } = setup('<div><div>');
+
+        const completions = await plugin.getCompletions(document, Position.create(0, 5), {
+            triggerCharacter: '>',
+            triggerKind: CompletionTriggerKind.TriggerCharacter
+        });
+        assert.strictEqual(completions, null);
+    });
+
+    it('provide emmet completions with >', async () => {
+        const { plugin, document } = setup('div>');
+
+        const completions = await plugin.getCompletions(document, Position.create(0, 5), {
+            triggerCharacter: '>',
+            triggerKind: CompletionTriggerKind.TriggerCharacter
+        });
+        assert.strictEqual(completions?.items[0]?.label, 'div>');
     });
 
     it('does not provide rename for element being uppercase', async () => {
@@ -234,7 +270,105 @@ describe('HTML Plugin', () => {
             ranges: [
                 { start: { line: 0, character: 1 }, end: { line: 0, character: 4 } },
                 { start: { line: 0, character: 7 }, end: { line: 0, character: 10 } }
-            ]
+            ],
+            wordPattern:
+                '(-?\\d*\\.\\d\\w*)|([^\\`\\~\\!\\@\\#\\^\\&\\*\\(\\)\\=\\+\\[\\{\\]\\}\\\\\\|\\;\\:\\\'\\"\\,\\<\\>\\/\\s]+)'
+        });
+    });
+
+    it('provides folding range', () => {
+        const { plugin, document } = setup('<div>\n  <div>\n  </div>\n  </div>');
+
+        const ranges = plugin.getFoldingRanges(document);
+        assert.deepStrictEqual(ranges, <FoldingRange[]>[{ startLine: 0, endLine: 2 }]);
+    });
+
+    it('provides folding range for element with arrow function handler', () => {
+        const { plugin, document } = setup('<div \non:click={() => {}}\n />');
+
+        const ranges = plugin.getFoldingRanges(document);
+        assert.deepStrictEqual(ranges, <FoldingRange[]>[{ startLine: 0, endLine: 1 }]);
+    });
+
+    it('provides indent based folding range for template tag', () => {
+        const { plugin, document } = setup('<template lang="pug">\np\n  div\n</template>');
+
+        const ranges = plugin.getFoldingRanges(document);
+        assert.deepStrictEqual(ranges, <FoldingRange[]>[
+            { startLine: 0, endLine: 2 },
+            { startLine: 1, endLine: 2 }
+        ]);
+    });
+
+    it('provide document highlight', () => {
+        const { plugin, document } = setup('<div></div>');
+
+        const highlight = plugin.findDocumentHighlight(document, Position.create(0, 1));
+
+        assert.deepStrictEqual(highlight, <DocumentHighlight[]>[
+            {
+                range: {
+                    start: {
+                        line: 0,
+                        character: 1
+                    },
+                    end: {
+                        line: 0,
+                        character: 4
+                    }
+                },
+                kind: DocumentHighlightKind.Read
+            },
+            {
+                range: {
+                    start: {
+                        line: 0,
+                        character: 7
+                    },
+                    end: {
+                        line: 0,
+                        character: 10
+                    }
+                },
+                kind: DocumentHighlightKind.Read
+            }
+        ]);
+    });
+
+    it('provide word highlight for unsupported languages', () => {
+        const { plugin, document } = setup('<template lang="pug">\n  div\n  p</template>');
+
+        const highlight = plugin.findDocumentHighlight(document, Position.create(1, 5));
+
+        assert.deepStrictEqual(highlight, <DocumentHighlight[]>[
+            {
+                range: {
+                    start: {
+                        line: 1,
+                        character: 2
+                    },
+                    end: {
+                        line: 1,
+                        character: 5
+                    }
+                },
+                kind: DocumentHighlightKind.Text
+            }
+        ]);
+    });
+
+    it('provide directive completions', async () => {
+        const { plugin, document } = setup('<div t');
+
+        const completions = await plugin.getCompletions(document, Position.create(0, 6));
+        const item = completions?.items.find((item) => item.label === 'transition:');
+        assert.equal(item?.kind, CompletionItemKind.Keyword);
+        assert.deepStrictEqual(item?.textEdit, {
+            newText: 'transition:',
+            range: {
+                start: { line: 0, character: 5 },
+                end: { line: 0, character: 6 }
+            }
         });
     });
 });

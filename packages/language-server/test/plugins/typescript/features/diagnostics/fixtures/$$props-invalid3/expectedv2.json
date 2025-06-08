@@ -5,26 +5,6 @@
         "source": "ts",
         "message": "Argument of type '$$Props' is not assignable to parameter of type '{ wrong: boolean; }'.\n  Property 'wrong' is missing in type '$$Props' but required in type '{ wrong: boolean; }'.",
         "code": 2345,
-        "tags": [],
-        "relatedInformation": [
-            {
-                "location": {
-                    "range": {
-                        "start": { "line": 0, "character": 1 },
-                        "end": { "line": 0, "character": 1 }
-                    },
-                    "uri": "file://___root___/packages/language-server/test/plugins/typescript/features/diagnostics/fixtures/%24%24props-invalid3/input.svelte"
-                },
-                "message": "'wrong' is declared here."
-            }
-        ]
-    },
-    {
-        "range": { "start": { "line": 1, "character": 11 }, "end": { "line": 1, "character": 18 } },
-        "severity": 1,
-        "source": "ts",
-        "message": "Argument of type '{ wrong: boolean; }' is not assignable to parameter of type '$$Props'.\n  Object literal may only specify known properties, and 'wrong' does not exist in type '$$Props'.",
-        "code": 2345,
         "tags": []
     }
 ]
