@@ -36,7 +36,15 @@ import {
     get$storeOffsetOf$storeDeclaration,
     SnapshotMap
 } from './utils';
-import { not, flatten, passMap, swapRangeStartEndIfNecessary, memoize, pathToUrl, isNotNullOrUndefined } from '../../../utils';
+import {
+    not,
+    flatten,
+    passMap,
+    swapRangeStartEndIfNecessary,
+    memoize,
+    pathToUrl,
+    isNotNullOrUndefined
+} from '../../../utils';
 import { LSConfigManager } from '../../../ls-config';
 import { isAttributeName, isEventHandler } from '../svelte-ast-utils';
 import { internalHelpers } from 'svelte2tsx';
@@ -178,41 +186,22 @@ export class DiagnosticsProviderImpl implements DiagnosticsProvider {
                 continue;
             }
 
+            if (tsDiag.relatedInformation) {
+                diagnostic.relatedInformation = (
+                    await Promise.all(
+                        tsDiag.relatedInformation.map((info) =>
+                            this.convertRelatedInformation(info, snapshots)
+                        )
+                    )
+                ).filter(isNotNullOrUndefined);
+            }
+
             diagnostic = adjustIfNecessary(diagnostic, tsDoc.isSvelte5Plus);
             diagnostic = swapDiagRangeStartEndIfNecessary(diagnostic);
             converted.push(diagnostic);
         }
 
         return converted;
-    }
-    private async toDiagnostic(
-        tsDoc: SvelteDocumentSnapshot,
-        diagnostic: ts.Diagnostic,
-        isTypescript: boolean,
-        snapshots: SnapshotMap
-    ): Promise<Diagnostic> {
-        const result: Diagnostic = {
-            range: convertRange(tsDoc, diagnostic),
-            severity: mapSeverity(diagnostic.category),
-            source: isTypescript ? 'ts' : 'js',
-            message: ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
-            code: diagnostic.code,
-            tags: getDiagnosticTag(diagnostic)
-        };
-
-        if (!diagnostic.relatedInformation) {
-            return result;
-        }
-
-        result.relatedInformation = (
-            await Promise.all(
-                diagnostic.relatedInformation.map((info) =>
-                    this.convertRelatedInformation(info, snapshots)
-                )
-            )
-        ).filter(isNotNullOrUndefined);
-
-        return result;
     }
 
     private async convertRelatedInformation(
