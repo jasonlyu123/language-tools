@@ -123,7 +123,7 @@ export function startServer(options?: LSOptions) {
             Logger.error('No workspace path set');
         }
 
-        if (!evt.capabilities.workspace?.didChangeWatchedFiles) {
+        if (!evt.capabilities.workspace?.didChangeWatchedFiles?.dynamicRegistration) {
             const workspacePaths = workspaceUris.map(urlToPath).filter(isNotNullOrUndefined);
             watcher = new FallbackWatcher(watchExtensions, workspacePaths);
             watcher.onDidChangeWatchedFiles(onDidChangeWatchedFiles);
@@ -527,7 +527,14 @@ export function startServer(options?: LSOptions) {
         refreshSemanticTokens();
     };
 
-    connection.onDidChangeWatchedFiles(onDidChangeWatchedFiles);
+    connection.onDidChangeWatchedFiles((para) => {
+        // If the client sets up a watcher, dispose our fallback watcher
+        if (watcher && !watcher.hasNonRootPatterns) {
+            watcher?.dispose();
+            watcher = undefined;
+        }
+        onDidChangeWatchedFiles(para);
+    });
     function onDidChangeWatchedFiles(para: DidChangeWatchedFilesParams) {
         const onWatchFileChangesParas = para.changes
             .map((change) => ({

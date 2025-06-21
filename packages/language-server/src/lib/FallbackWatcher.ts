@@ -21,6 +21,8 @@ export class FallbackWatcher {
 
     private undeliveredFileEvents: FileEvent[] = [];
 
+    hasNonRootPatterns = false;
+
     constructor(watchExtensions: string[], workspacePaths: string[]) {
         const gitOrNodeModules = /\.git|node_modules/;
         const ignoredExtensions = (fileName: string, stats?: Stats) => {
@@ -78,6 +80,7 @@ export class FallbackWatcher {
                 continue;
             }
             this.watcher.add(join(basePath, pattern.pattern));
+            this.hasNonRootPatterns = true;
         }
     }
 
