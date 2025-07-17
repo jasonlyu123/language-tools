@@ -171,6 +171,9 @@ export class DiagnosticsProviderImpl implements DiagnosticsProvider {
         const mapRange = rangeMapper(tsDoc, document, lang);
         const noFalsePositive = isNoFalsePositive(document, tsDoc);
         const converted: Diagnostic[] = [];
+        const supportRelatedInformation =
+            !!this.configManager.getClientCapabilities()?.textDocument?.publishDiagnostics
+                ?.relatedInformation;
 
         for (const tsDiag of diagnostics) {
             let diagnostic: Diagnostic = {
@@ -189,7 +192,7 @@ export class DiagnosticsProviderImpl implements DiagnosticsProvider {
                 continue;
             }
 
-            if (tsDiag.relatedInformation) {
+            if (tsDiag.relatedInformation && supportRelatedInformation) {
                 const relatedInformation = (
                     await Promise.all(
                         tsDiag.relatedInformation.map((info) =>
