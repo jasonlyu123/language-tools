@@ -123,7 +123,7 @@ export function startServer(options?: LSOptions) {
             Logger.error('No workspace path set');
         }
 
-        if (!evt.capabilities.workspace?.didChangeWatchedFiles) {
+        if (!evt.capabilities.workspace?.didChangeWatchedFiles?.dynamicRegistration) {
             const workspacePaths = workspaceUris.map(urlToPath).filter(isNotNullOrUndefined);
             watcher = new FallbackWatcher(watchExtensions, workspacePaths);
             watcher.onDidChangeWatchedFiles(onDidChangeWatchedFiles);
@@ -326,7 +326,8 @@ export function startServer(options?: LSOptions) {
                 },
                 documentHighlightProvider:
                     evt.initializationOptions?.configuration?.svelte?.plugin?.svelte
-                        ?.documentHighlight?.enable ?? true
+                        ?.documentHighlight?.enable ?? true,
+                workspaceSymbolProvider: true
             }
         };
     });
@@ -499,6 +500,8 @@ export function startServer(options?: LSOptions) {
     connection.onDocumentHighlight((evt) =>
         pluginHost.findDocumentHighlight(evt.textDocument, evt.position)
     );
+
+    connection.onWorkspaceSymbol((evt, token) => pluginHost.getWorkspaceSymbols(evt.query, token));
 
     const diagnosticsManager = new DiagnosticsManager(
         connection.sendDiagnostics,
