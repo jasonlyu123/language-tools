@@ -9,11 +9,11 @@
         "relatedInformation": [
             {
                 "location": {
+                    "uri": "<workspaceUri>/checkjs/props_to-import-ts.svelte",
                     "range": {
                         "start": { "line": 0, "character": 1 },
                         "end": { "line": 0, "character": 1 }
-                    },
-                    "uri": "file://___root___/packages/language-server/test/plugins/typescript/features/diagnostics/fixtures/checkjs/props_to-import-ts.svelte"
+                    }
                 },
                 "message": "'required' is declared here."
             }
@@ -69,11 +69,11 @@
         "relatedInformation": [
             {
                 "location": {
+                    "uri": "<workspaceUri>/checkjs/props_to-import-js.svelte",
                     "range": {
                         "start": { "line": 0, "character": 1 },
                         "end": { "line": 0, "character": 1 }
-                    },
-                    "uri": "file://___root___/packages/language-server/test/plugins/typescript/features/diagnostics/fixtures/checkjs/props_to-import-js.svelte"
+                    }
                 },
                 "message": "'required' is declared here."
             }

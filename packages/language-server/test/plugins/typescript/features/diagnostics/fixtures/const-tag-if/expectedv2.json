@@ -12,11 +12,11 @@
         "relatedInformation": [
             {
                 "location": {
+                    "uri": "<node_modules>/typescript/lib/lib.es2015.core.d.ts",
                     "range": {
-                        "start": { "line": 484, "character": 4 },
-                        "end": { "line": 484, "character": 20 }
-                    },
-                    "uri": "file://___root___/node_modules/typescript/lib/lib.es2015.core.d.ts"
+                        "start": { "line": 486, "character": 4 },
+                        "end": { "line": 486, "character": 20 }
+                    }
                 },
                 "message": "'fixed' is declared here."
             }
@@ -35,11 +35,11 @@
         "relatedInformation": [
             {
                 "location": {
+                    "uri": "<node_modules>/typescript/lib/lib.es2015.core.d.ts",
                     "range": {
-                        "start": { "line": 484, "character": 4 },
-                        "end": { "line": 484, "character": 20 }
-                    },
-                    "uri": "file://___root___/node_modules/typescript/lib/lib.es2015.core.d.ts"
+                        "start": { "line": 486, "character": 4 },
+                        "end": { "line": 486, "character": 20 }
+                    }
                 },
                 "message": "'fixed' is declared here."
             }

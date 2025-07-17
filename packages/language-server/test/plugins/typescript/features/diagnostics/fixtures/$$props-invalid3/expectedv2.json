@@ -5,6 +5,18 @@
         "source": "ts",
         "message": "Argument of type '$$Props' is not assignable to parameter of type '{ wrong: boolean; }'.\n  Property 'wrong' is missing in type '$$Props' but required in type '{ wrong: boolean; }'.",
         "code": 2345,
-        "tags": []
+        "tags": [],
+        "relatedInformation": [
+            {
+                "location": {
+                    "uri": "<workspaceUri>/%24%24props-invalid3/input.svelte",
+                    "range": {
+                        "start": { "line": 0, "character": 1 },
+                        "end": { "line": 0, "character": 1 }
+                    }
+                },
+                "message": "'wrong' is declared here."
+            }
+        ]
     }
 ]

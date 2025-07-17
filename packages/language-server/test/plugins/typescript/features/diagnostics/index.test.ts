@@ -14,6 +14,7 @@ import {
     updateSnapshotIfFailedOrEmpty
 } from '../../test-utils';
 import { getPackageInfo } from '../../../../../src/importPackage';
+import { Diagnostic } from 'vscode-languageserver-types';
 
 function setup(workspaceDir: string, filePath: string) {
     const docManager = new DocumentManager(
@@ -50,7 +51,8 @@ async function executeTest(
     }
 ) {
     const { plugin, document } = setup(workspaceDir, inputFile);
-    const diagnostics = await plugin.getDiagnostics(document);
+    const workspaceUri = pathToUrl(workspaceDir);
+    const diagnostics = sanitizeUri(await plugin.getDiagnostics(document));
 
     const defaultExpectedFile = join(dir, expected);
     const expectedFileForCurrentSvelteMajor = join(dir, newSvelteMajorExpected);
@@ -69,6 +71,31 @@ async function executeTest(
         },
         rootDir: __dirname
     });
+
+    function sanitizeUri(diagnostics: Diagnostic[] | null) {
+        if (!diagnostics) {
+            return;
+        }
+
+        for (const diagnostic of diagnostics) {
+            if (!diagnostic.relatedInformation?.length) {
+                continue;
+            }
+
+            for (const info of diagnostic.relatedInformation) {
+                info.location.uri = info.location.uri.replace(workspaceUri, '<workspaceUri>');
+
+                const indexOfNodeModules = info.location.uri.lastIndexOf('node_modules');
+                if (indexOfNodeModules !== -1) {
+                    info.location.uri =
+                        '<node_modules>' +
+                        info.location.uri.slice(indexOfNodeModules + 'node_modules'.length);
+                }
+            }
+        }
+
+        return diagnostics;
+    }
 }
 
 const executeTests = createSnapshotTester(executeTest);

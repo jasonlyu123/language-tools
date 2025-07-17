@@ -27,7 +27,6 @@
         "source": "ts",
         "message": "Type '{}' is missing the following properties from type '$$Props': exported1, exported3",
         "code": 2739,
-        "tags": [],
-        "relatedInformation": []
+        "tags": []
     }
 ]
