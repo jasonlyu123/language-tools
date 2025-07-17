@@ -71,7 +71,10 @@ export enum DiagnosticCode {
     CANNOT_FIND_NAME = 2304, // "Cannot find name 'xxx'"
     CANNOT_FIND_NAME_X_DID_YOU_MEAN_Y = 2552, // "Cannot find name '...' Did you mean '...'?"
     EXPECTED_N_ARGUMENTS = 2554, // Expected {0} arguments, but got {1}.
-    DEPRECATED_SIGNATURE = 6387 // The signature '..' of '..' is deprecated
+    DEPRECATED_SIGNATURE = 6387, // The signature '..' of '..' is deprecated
+
+    // related diagnostics
+    EXPECTED_TYPE_COME_FROM_PROPERTY = 6500 // "Expected type to come from property '{0}'..."
 }
 
 export class DiagnosticsProviderImpl implements DiagnosticsProvider {
@@ -187,13 +190,17 @@ export class DiagnosticsProviderImpl implements DiagnosticsProvider {
             }
 
             if (tsDiag.relatedInformation) {
-                diagnostic.relatedInformation = (
+                const relatedInformation = (
                     await Promise.all(
                         tsDiag.relatedInformation.map((info) =>
                             this.convertRelatedInformation(info, snapshots)
                         )
                     )
                 ).filter(isNotNullOrUndefined);
+
+                if (relatedInformation.length) {
+                    diagnostic.relatedInformation = relatedInformation;
+                }
             }
 
             diagnostic = adjustIfNecessary(diagnostic, tsDoc.isSvelte5Plus);
@@ -215,6 +222,33 @@ export class DiagnosticsProviderImpl implements DiagnosticsProvider {
         const snapshot = await snapshots.retrieve(info.file.fileName);
         if (!snapshot) {
             return;
+        }
+
+        // Unknown props has a related information that points to the generic `props` property in ComponentConstructorOptions.
+        // Hide it for now, because it is not useful and shows up a lot.
+        if (
+            info.code === DiagnosticCode.EXPECTED_TYPE_COME_FROM_PROPERTY &&
+            info.start !== undefined
+        ) {
+            const node = findNodeAtSpan(info.file, {
+                start: info.start,
+                length: info.length ?? 0
+            });
+
+            if (
+                node &&
+                ts.isIdentifier(node) &&
+                node.text === 'props' &&
+                ts.isPropertySignature(node.parent)
+            ) {
+                const typeDeclaration = node.parent.parent;
+                if (
+                    ts.isInterfaceDeclaration(typeDeclaration) &&
+                    typeDeclaration.name.text === 'ComponentConstructorOptions'
+                ) {
+                    return;
+                }
+            }
         }
 
         return {
