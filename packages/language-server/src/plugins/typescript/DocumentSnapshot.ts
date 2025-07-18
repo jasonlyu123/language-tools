@@ -71,6 +71,7 @@ export interface SvelteSnapshotOptions {
     version: string | undefined;
     transformOnTemplateError: boolean;
     typingsNamespace: string;
+    shimPaths?: string[];
 }
 
 export namespace DocumentSnapshot {
@@ -211,7 +212,8 @@ function preprocessSvelteFile(document: Document, options: SvelteSnapshotOptions
             namespace: document.config?.compilerOptions?.namespace,
             accessors:
                 document.config?.compilerOptions?.accessors ??
-                document.config?.compilerOptions?.customElement
+                document.config?.compilerOptions?.customElement,
+            shimPaths: options.shimPaths,
         });
         text = tsx.code;
         tsxMap = tsx.map as EncodedSourceMap;

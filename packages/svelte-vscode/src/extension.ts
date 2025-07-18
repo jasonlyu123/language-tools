@@ -33,6 +33,7 @@ import { addFindComponentReferencesListener } from './typescript/findComponentRe
 import { addFindFileReferencesListener } from './typescript/findFileReferences';
 import { setupSvelteKit } from './sveltekit';
 import { resolveCodeLensMiddleware } from './middlewares';
+import { getBuiltinExePath } from './typescript/tsgo';
 
 namespace TagCloseRequest {
     export const type: RequestType<TextDocumentPositionParams, string, any> = new RequestType(
@@ -194,7 +195,10 @@ export function activateSvelteLanguageServer(context: ExtensionContext) {
                 html: workspace.getConfiguration('html')
             },
             dontFilterIncompleteCompletions: true, // VSCode filters client side and is smarter at it than us
-            isTrusted: workspace.isTrusted
+            isTrusted: workspace.isTrusted,
+            experimental: {
+                typescriptGo: createTypeScriptGoInfo()
+            }
         },
         middleware: {
             resolveCodeLens: resolveCodeLensMiddleware
@@ -202,6 +206,16 @@ export function activateSvelteLanguageServer(context: ExtensionContext) {
     };
 
     const ls = createLanguageServer(serverOptions, clientOptions);
+
+    context.subscriptions.push(
+        workspace.onDidChangeConfiguration((event) => {
+            if (event.affectsConfiguration('typescript.experimental.useTsgo')) {
+                ls.clientOptions.initializationOptions.experimental.typescriptGo =
+                    createTypeScriptGoInfo();
+                ls.restart();
+            }
+        })
+    );
     ls.start().then(() => {
         const tagRequestor = (document: TextDocument, position: Position) => {
             const param = ls.code2ProtocolConverter.asTextDocumentPositionParams(
@@ -543,4 +557,26 @@ function warnIfOldExtensionInstalled() {
                 'Command line: "code --uninstall-extension JamesBirtles.svelte-vscode"'
         );
     }
+}
+function createTypeScriptGoInfo() {
+    const useTsGo = workspace.getConfiguration('typescript').get<boolean>('experimental.useTsgo');
+    if (!useTsGo) {
+        return undefined;
+    }
+    const tsGoExtension = extensions.getExtension('TypeScriptTeam.native-preview');
+    if (!tsGoExtension) {
+        return undefined;
+    }
+
+    const extensionUri = tsGoExtension.extensionUri;
+    if (!extensionUri) {
+        return undefined;
+    }
+
+    return {
+        serverPath: getBuiltinExePath({
+            asAbsolutePath: (relativePath: string) =>
+                Uri.joinPath(extensionUri, relativePath).fsPath
+        })
+    };
 }

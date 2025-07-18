@@ -84,6 +84,7 @@ export function svelte2tsx(
          * Transpiled output may vary between versions.
          */
         version?: string;
+        shimPaths?: string[];
     }
 ): SvelteCompiledToTsx
 

@@ -41,6 +41,7 @@ export function svelte2tsx(
         accessors?: boolean;
         typingsNamespace?: string;
         noSvelteComponentTyped?: boolean;
+        shimPaths?: string[];
     } = { parse }
 ) {
     options.mode = options.mode || 'ts';
@@ -247,6 +248,12 @@ export function svelte2tsx(
         };
     } else {
         str.prepend('///<reference types="svelte" />\n');
+        if (options.shimPaths) {
+            for (const shimPath of options.shimPaths) {
+                const normalizedPath = shimPath.replace(/\\/g, '/');
+                str.prepend(`///<reference path="${normalizedPath}" />\n`);
+            }
+        }
         return {
             code: str.toString(),
             map: str.generateMap({ hires: true, source: options?.filename }),

@@ -51,6 +51,9 @@ import {
 } from './plugins/typescript/features/CodeActionsProvider';
 import { createLanguageServices } from './plugins/css/service';
 import { FileSystemProvider } from './plugins/css/FileSystemProvider';
+import { TypeScriptGoPlugin } from './plugins/typescript-go/TypeScriptGoPlugin';
+import { TsApiService } from './plugins/typescript-go/lspService';
+import { setTimeout } from 'node:timers/promises';
 
 namespace TagCloseRequest {
     export const type: RequestType<TextDocumentPositionParams, string | null, any> =
@@ -114,7 +117,7 @@ export function startServer(options?: LSOptions) {
         '*.{' + watchExtensions.map((ext) => ext.slice(1)).join(',') + '}';
     const recursiveWatchPattern = '**/' + nonRecursiveWatchPattern;
 
-    connection.onInitialize((evt) => {
+    connection.onInitialize(async (evt) => {
         const workspaceUris = evt.workspaceFolders?.map((folder) => folder.uri.toString()) ?? [
             evt.rootUri ?? ''
         ];
@@ -196,23 +199,46 @@ export function startServer(options?: LSOptions) {
             new CSSPlugin(docManager, configManager, workspaceFolders, cssLanguageServices)
         );
         const normalizedWorkspaceUris = workspaceUris.map(normalizeUri);
-        pluginHost.register(
-            new TypeScriptPlugin(
-                configManager,
-                new LSAndTSDocResolver(docManager, normalizedWorkspaceUris, configManager, {
-                    notifyExceedSizeLimit: notifyTsServiceExceedSizeLimit,
-                    onProjectReloaded: refreshCrossFilesSemanticFeatures,
-                    watch: true,
-                    nonRecursiveWatchPattern,
-                    watchDirectory: (patterns) => watchDirectory(patterns),
-                    reportConfigError(diagnostic) {
-                        connection?.sendDiagnostics(diagnostic);
-                    }
-                }),
-                normalizedWorkspaceUris,
-                docManager
-            )
-        );
+        const tsGoServerPath = evt.initializationOptions?.experimental?.typescriptGo?.serverPath;
+        let useTsGoServer = false;
+        if (tsGoServerPath) {
+            try {
+                const tsApiService = new TsApiService({
+                    lsConfigManager: configManager,
+                    tsserverPath: tsGoServerPath,
+                    docManager: docManager,
+                    rootUri: evt.rootUri,
+                    workspaceFolders: workspaceFolders
+                });
+                useTsGoServer = true;
+                pluginHost.register(new TypeScriptGoPlugin(tsApiService));
+                await tsApiService.start();
+            } catch (error) {
+                if (error instanceof Error) {
+                    console.error(`Failed to initialize TypeScript Go server: ${error.message}`);
+                }
+            }
+        }
+
+        if (!useTsGoServer) {
+            pluginHost.register(
+                new TypeScriptPlugin(
+                    configManager,
+                    new LSAndTSDocResolver(docManager, normalizedWorkspaceUris, configManager, {
+                        notifyExceedSizeLimit: notifyTsServiceExceedSizeLimit,
+                        onProjectReloaded: refreshCrossFilesSemanticFeatures,
+                        watch: true,
+                        nonRecursiveWatchPattern,
+                        watchDirectory: (patterns) => watchDirectory(patterns),
+                        reportConfigError(diagnostic) {
+                            connection?.sendDiagnostics(diagnostic);
+                        }
+                    }),
+                    normalizedWorkspaceUris,
+                    docManager
+                )
+            );
+        }
 
         const clientSupportApplyEditCommand = !!evt.capabilities.workspace?.applyEdit;
         const clientCodeActionCapabilities = evt.capabilities.textDocument?.codeAction;
