@@ -19,7 +19,8 @@ import {
     LinkedEditingRanges,
     CompletionContext,
     FoldingRange,
-    DocumentHighlight
+    DocumentHighlight,
+    DocumentSymbol
 } from 'vscode-languageserver';
 import {
     DocumentManager,
@@ -35,7 +36,8 @@ import {
     RenameProvider,
     LinkedEditingRangesProvider,
     FoldingRangeProvider,
-    DocumentHighlightProvider
+    DocumentHighlightProvider,
+    DocumentSymbolsProvider
 } from '../interfaces';
 import { isInsideMoustacheTag, toRange } from '../../lib/documents/utils';
 import { isNotNullOrUndefined, possiblyComponent } from '../../utils';
@@ -53,6 +55,7 @@ export class HTMLPlugin
     implements
         HoverProvider,
         CompletionsProvider,
+        DocumentSymbolsProvider,
         RenameProvider,
         LinkedEditingRangesProvider,
         FoldingRangeProvider,
@@ -311,6 +314,19 @@ export class HTMLPlugin
         }
 
         return this.lang.findDocumentSymbols(document, html);
+    }
+
+    getHierarchicalDocumentSymbols(document: Document): DocumentSymbol[] {
+        // if (!this.featureEnabled('documentSymbols')) {
+            return [];
+        // }
+
+        // const html = this.documents.get(document);
+        // if (!html) {
+        //     return [];
+        // }
+
+        // return this.lang.findDocumentSymbols2(document, html);
     }
 
     rename(document: Document, position: Position, newName: string): WorkspaceEdit | null {

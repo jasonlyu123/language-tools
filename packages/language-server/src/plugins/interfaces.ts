@@ -22,6 +22,7 @@ import {
     DefinitionLink,
     Diagnostic,
     DocumentHighlight,
+    DocumentSymbol,
     FoldingRange,
     FormattingOptions,
     Hover,
@@ -98,6 +99,11 @@ export interface DocumentSymbolsProvider {
         document: Document,
         cancellationToken?: CancellationToken
     ): Resolvable<SymbolInformation[]>;
+
+    getHierarchicalDocumentSymbols(
+        document: Document,
+        cancellationToken?: CancellationToken
+    ): Resolvable<DocumentSymbol[]>;
 }
 
 export interface DefinitionsProvider {

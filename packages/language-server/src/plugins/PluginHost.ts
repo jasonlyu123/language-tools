@@ -35,7 +35,8 @@ import {
     TextEdit,
     WorkspaceEdit,
     InlayHint,
-    WorkspaceSymbol
+    WorkspaceSymbol,
+    DocumentSymbol
 } from 'vscode-languageserver';
 import { DocumentManager, getNodeIfIsInHTMLStartTag } from '../lib/documents';
 import { Logger } from '../logger';
@@ -315,6 +316,30 @@ export class PluginHost implements LSProvider, OnWatchFileChanges {
                 'high'
             )
         );
+    }
+
+    async getHierarchicalDocumentSymbols(
+        textDocument: TextDocumentIdentifier,
+        cancellationToken: CancellationToken
+    ): Promise<DocumentSymbol[]> {
+        const document = this.getDocument(textDocument.uri);
+
+        // VSCode requested document symbols twice for the outline view and the sticky scroll
+        // Manually delay here and don't use low priority as one of them will return no symbols
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        if (cancellationToken.isCancellationRequested) {
+            return [];
+        }
+        const result = flatten(
+            await this.execute<DocumentSymbol[]>(
+                'getHierarchicalDocumentSymbols',
+                [document, cancellationToken],
+                ExecuteMode.Collect,
+                'high'
+            )
+        );
+
+        return result;
     }
 
     async getDefinitions(

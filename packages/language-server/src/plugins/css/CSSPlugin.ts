@@ -29,7 +29,8 @@ import {
     mapSelectionRangeToParent,
     isInTag,
     mapRangeToOriginal,
-    TagInformation
+    TagInformation,
+    mapDocumentSymbolToOriginal
 } from '../../lib/documents';
 import { LSConfigManager, LSCSSConfig } from '../../ls-config';
 import {
@@ -50,7 +51,7 @@ import { getIdClassCompletion } from './features/getIdClassCompletion';
 import { AttributeContext, getAttributeContextAtPosition } from '../../lib/documents/parseHtml';
 import { StyleAttributeDocument } from './StyleAttributeDocument';
 import { getDocumentContext } from '../documentContext';
-import { FoldingRange, FoldingRangeKind } from 'vscode-languageserver-types';
+import { DocumentSymbol, FoldingRange, FoldingRangeKind } from 'vscode-languageserver-types';
 import { indentBasedFoldingRangeForTag } from '../../lib/foldingRange/indentFolding';
 import { wordHighlightForTag } from '../../lib/documentHighlight/wordHighlight';
 import { isNotNullOrUndefined, urlToPath } from '../../utils';
@@ -387,6 +388,33 @@ export class CSSPlugin
                 return symbol;
             })
             .map((symbol) => mapSymbolInformationToOriginal(cssDocument, symbol));
+    }
+
+    getHierarchicalDocumentSymbols(document: Document): DocumentSymbol[] {
+        if (!this.featureEnabled('documentColors')) {
+            return [];
+        }
+
+        const cssDocument = this.getCSSDoc(document);
+
+        if (shouldExcludeDocumentSymbols(cssDocument)) {
+            return [];
+        }
+
+        return this.getLanguageService(extractLanguage(cssDocument))
+            .findDocumentSymbols2(cssDocument, cssDocument.stylesheet)
+            .map((symbol) => {
+                // if (!symbol) {
+                //     return {
+                //         ...symbol,
+                //         // TODO: this could contain other things, e.g. style.myclass
+                //         containerName: 'style'
+                //     };
+                // }
+
+                return symbol;
+            })
+            .map((symbol) => mapDocumentSymbolToOriginal(cssDocument, symbol));
     }
 
     getFoldingRanges(document: Document): FoldingRange[] {

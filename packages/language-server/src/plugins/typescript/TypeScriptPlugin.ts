@@ -1,4 +1,4 @@
-import ts, { NavigationTree } from 'typescript';
+import ts from 'typescript';
 import {
     CallHierarchyIncomingCall,
     CallHierarchyItem,
@@ -12,6 +12,7 @@ import {
     DefinitionLink,
     Diagnostic,
     DocumentHighlight,
+    DocumentSymbol,
     FileChangeType,
     FoldingRange,
     Hover,
@@ -26,19 +27,13 @@ import {
     SignatureHelp,
     SignatureHelpContext,
     SymbolInformation,
-    SymbolKind,
     TextDocumentContentChangeEvent,
     WorkspaceEdit,
     WorkspaceSymbol
 } from 'vscode-languageserver';
-import {
-    Document,
-    DocumentManager,
-    getTextInRange,
-    mapSymbolInformationToOriginal
-} from '../../lib/documents';
+import { Document, DocumentManager } from '../../lib/documents';
 import { LSConfigManager, LSTypescriptConfig } from '../../ls-config';
-import { isNotNullOrUndefined, isZeroLengthRange, pathToUrl } from '../../utils';
+import { isNotNullOrUndefined, pathToUrl } from '../../utils';
 import {
     AppCompletionItem,
     AppCompletionList,
@@ -71,9 +66,12 @@ import {
 } from '../interfaces';
 import { LSAndTSDocResolver } from './LSAndTSDocResolver';
 import { ignoredBuildDirectories } from './SnapshotManager';
+import { CallHierarchyProviderImpl } from './features/CallHierarchyProvider';
 import { CodeActionsProviderImpl } from './features/CodeActionsProvider';
+import { CodeLensProviderImpl } from './features/CodeLensProvider';
 import { CompletionResolveInfo, CompletionsProviderImpl } from './features/CompletionProvider';
 import { DiagnosticsProviderImpl } from './features/DiagnosticsProvider';
+import { DocumentHighlightProviderImpl } from './features/DocumentHighlightProvider';
 import { FindComponentReferencesProviderImpl } from './features/FindComponentReferencesProvider';
 import { FindFileReferencesProviderImpl } from './features/FindFileReferencesProvider';
 import { FindReferencesProviderImpl } from './features/FindReferencesProvider';
@@ -87,25 +85,20 @@ import { SemanticTokensProviderImpl } from './features/SemanticTokensProvider';
 import { SignatureHelpProviderImpl } from './features/SignatureHelpProvider';
 import { TypeDefinitionProviderImpl } from './features/TypeDefinitionProvider';
 import { UpdateImportsProviderImpl } from './features/UpdateImportsProvider';
+import { WorkspaceSymbolsProviderImpl } from './features/WorkspaceSymbolProvider';
 import { getDirectiveCommentCompletions } from './features/getDirectiveCommentCompletions';
 import {
     SnapshotMap,
     is$storeVariableIn$storeDeclaration,
     isTextSpanInGeneratedCode
 } from './features/utils';
-import { DocumentHighlightProviderImpl } from './features/DocumentHighlightProvider';
-import { isAttributeName, isAttributeShorthand, isEventHandler } from './svelte-ast-utils';
 import {
     convertToLocationForReferenceOrDefinition,
     convertToLocationRange,
-    isInScript,
     isSvelte2tsxShimFile,
-    isSvelteFilePath,
-    symbolKindFromString
+    isSvelteFilePath
 } from './utils';
-import { CallHierarchyProviderImpl } from './features/CallHierarchyProvider';
-import { CodeLensProviderImpl } from './features/CodeLensProvider';
-import { WorkspaceSymbolsProviderImpl } from './features/WorkspaceSymbolProvider';
+import { DocumentSymbolsProviderImpl } from './features/DocumentSymbolsProvider';
 
 export class TypeScriptPlugin
     implements
@@ -140,6 +133,7 @@ export class TypeScriptPlugin
     private readonly lsAndTsDocResolver: LSAndTSDocResolver;
     private readonly completionProvider: CompletionsProviderImpl;
     private readonly codeActionsProvider: CodeActionsProviderImpl;
+    private readonly documentSymbolsProvider: DocumentSymbolsProviderImpl;
     private readonly updateImportsProvider: UpdateImportsProviderImpl;
     private readonly diagnosticsProvider: DiagnosticsProviderImpl;
     private readonly renameProvider: RenameProviderImpl;
@@ -177,6 +171,10 @@ export class TypeScriptPlugin
             this.lsAndTsDocResolver,
             this.completionProvider,
             configManager
+        );
+        this.documentSymbolsProvider = new DocumentSymbolsProviderImpl(
+            this.lsAndTsDocResolver,
+            this.configManager
         );
         this.updateImportsProvider = new UpdateImportsProviderImpl(
             this.lsAndTsDocResolver,
@@ -252,107 +250,21 @@ export class TypeScriptPlugin
             return [];
         }
 
-        const { lang, tsDoc } = await this.lsAndTsDocResolver.getLsForSyntheticOperations(document);
+        return this.documentSymbolsProvider.getDocumentSymbols(document, cancellationToken);
+    }
 
-        if (cancellationToken?.isCancellationRequested) {
+    async getHierarchicalDocumentSymbols(
+        document: Document,
+        cancellationToken?: CancellationToken
+    ): Promise<DocumentSymbol[]> {
+        if (!this.featureEnabled('documentSymbols')) {
             return [];
         }
 
-        const navTree = lang.getNavigationTree(tsDoc.filePath);
-
-        const symbols: SymbolInformation[] = [];
-        collectSymbols(navTree, undefined, (symbol) => symbols.push(symbol));
-
-        const topContainerName = symbols[0].name;
-        const result: SymbolInformation[] = [];
-
-        for (let symbol of symbols.slice(1)) {
-            if (symbol.containerName === topContainerName) {
-                symbol.containerName = 'script';
-            }
-
-            symbol = mapSymbolInformationToOriginal(tsDoc, symbol);
-
-            if (
-                symbol.location.range.start.line < 0 ||
-                symbol.location.range.end.line < 0 ||
-                isZeroLengthRange(symbol.location.range) ||
-                symbol.name.startsWith('__sveltets_')
-            ) {
-                continue;
-            }
-
-            if (
-                (symbol.kind === SymbolKind.Property || symbol.kind === SymbolKind.Method) &&
-                !isInScript(symbol.location.range.start, document)
-            ) {
-                if (
-                    symbol.name === 'props' &&
-                    document.getText().charAt(document.offsetAt(symbol.location.range.start)) !==
-                        'p'
-                ) {
-                    // This is the "props" of a generated component constructor
-                    continue;
-                }
-                const node = tsDoc.svelteNodeAt(symbol.location.range.start);
-                if (
-                    (node && (isAttributeName(node) || isAttributeShorthand(node))) ||
-                    isEventHandler(node)
-                ) {
-                    // This is a html or component property, they are not treated as a new symbol
-                    // in JSX and so we do the same for the new transformation.
-                    continue;
-                }
-            }
-
-            if (symbol.name === '<function>') {
-                let name = getTextInRange(symbol.location.range, document.getText()).trimLeft();
-                if (name.length > 50) {
-                    name = name.substring(0, 50) + '...';
-                }
-                symbol.name = name;
-            }
-
-            if (symbol.name.startsWith('$$_')) {
-                if (!symbol.name.includes('$on')) {
-                    continue;
-                }
-                // on:foo={() => ''}   ->   $on("foo") callback
-                symbol.name = symbol.name.substring(symbol.name.indexOf('$on'));
-            }
-
-            result.push(symbol);
-        }
-
-        return result;
-
-        function collectSymbols(
-            tree: NavigationTree,
-            container: string | undefined,
-            cb: (symbol: SymbolInformation) => void
-        ) {
-            const start = tree.spans[0];
-            const end = tree.spans[tree.spans.length - 1];
-            if (start && end) {
-                cb(
-                    SymbolInformation.create(
-                        tree.text,
-                        symbolKindFromString(tree.kind),
-                        Range.create(
-                            tsDoc.positionAt(start.start),
-                            tsDoc.positionAt(end.start + end.length)
-                        ),
-                        tsDoc.getURL(),
-                        container
-                    )
-                );
-            }
-            if (tree.childItems) {
-                for (const child of tree.childItems) {
-                    collectSymbols(child, tree.text, cb);
-                }
-            }
-        }
+        return this.documentSymbolsProvider.getHierarchicalDocumentSymbols(
+            document,
+            cancellationToken
+        );
     }
 
     async getCompletions(
