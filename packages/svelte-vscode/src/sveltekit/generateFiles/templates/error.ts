@@ -1,4 +1,4 @@
-import { GenerateConfig, ProjectType, Resource } from '../types';
+import { GenerateConfig, Resource } from '../types';
 
 const defaultScriptTemplate = `
 <script>
@@ -6,6 +6,14 @@ const defaultScriptTemplate = `
 </script>
 
 <h1>{$page.status}: {$page.error.message}</h1>
+`;
+
+const jsSv5ScriptTemplateAppState = `
+<script>
+    import { page } from '$app/state';
+</script>
+
+<h1>{page.status}: {page.error.message}</h1>
 `;
 
 const tsScriptTemplate = `
@@ -16,15 +24,27 @@ const tsScriptTemplate = `
 <h1>{$page.status}: {$page.error?.message}</h1>
 `;
 
-const scriptTemplate: ReadonlyMap<ProjectType, string> = new Map([
-    [ProjectType.TS_SV5, tsScriptTemplate],
-    [ProjectType.TS_SATISFIES_SV5, tsScriptTemplate],
-    [ProjectType.JS_SV5, defaultScriptTemplate],
-    [ProjectType.TS, tsScriptTemplate],
-    [ProjectType.TS_SATISFIES, tsScriptTemplate],
-    [ProjectType.JS, defaultScriptTemplate]
-]);
+const tsSv5ScriptTemplateAppState = `
+<script lang="ts">
+    import { page } from '$app/state';
+</script>
+
+<h1>{page.status}: {page.error?.message}</h1>
+`;
 
 export default async function (config: GenerateConfig): ReturnType<Resource['generate']> {
-    return (scriptTemplate.get(config.type) ?? defaultScriptTemplate).trim();
+    const { withTs, withAppState } = config.kind;
+    let template = defaultScriptTemplate;
+
+    if (withAppState && withTs) {
+        template = tsSv5ScriptTemplateAppState;
+    } else if (withAppState && !withTs) {
+        template = jsSv5ScriptTemplateAppState;
+    } else if (!withAppState && withTs) {
+        template = tsScriptTemplate;
+    } else if (!withAppState && !withTs) {
+        template = defaultScriptTemplate;
+    }
+
+    return template.trim();
 }
