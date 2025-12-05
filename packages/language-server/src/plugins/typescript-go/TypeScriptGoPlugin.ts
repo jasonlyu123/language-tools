@@ -1,7 +1,18 @@
-import { DefinitionLink, Diagnostic, Hover, Position } from 'vscode-languageserver-types';
+import {
+    CodeLens,
+    DefinitionLink,
+    Diagnostic,
+    Hover,
+    Location,
+    Position,
+    Range,
+    ReferenceContext,
+    WorkspaceEdit
+} from 'vscode-languageserver-types';
 import { Document } from '../../lib/documents';
 import { Plugin, Resolvable } from '../interfaces';
 import { TsApiService } from './lspService';
+import { CancellationToken } from 'vscode-languageserver-protocol';
 
 export class TypeScriptGoPlugin implements Plugin {
     __name = 'typescript';
@@ -20,5 +31,39 @@ export class TypeScriptGoPlugin implements Plugin {
 
     getDefinitions(document: Document, position: Position): Resolvable<DefinitionLink[]> {
         return this.lspService.getDefinitions(document, position);
+    }
+
+    getCodeLens(document: Document): Resolvable<CodeLens[] | null> {
+        return this.lspService.getCodeLens(document);
+    }
+
+    resolveCodeLens(
+        document: Document,
+        codeLensToResolve: CodeLens,
+        cancellationToken?: CancellationToken
+    ): Resolvable<CodeLens> {
+        return this.lspService.resolveCodeLens(document, codeLensToResolve, cancellationToken);
+    }
+
+    async findReferences(
+        document: Document,
+        position: Position,
+        context: ReferenceContext,
+        cancellationToken?: CancellationToken
+    ): Promise<Location[] | null> {
+        return this.lspService.findReferences(document, position, context, cancellationToken);
+    }
+
+    async prepareRename(document: Document, position: Position): Promise<Range | null> {
+        return this.lspService.prepareRename(document, position);
+    }
+
+    async rename(
+        document: Document,
+        position: Position,
+        newName: string,
+        cancellationToken?: CancellationToken
+    ): Promise<WorkspaceEdit | null> {
+        return this.lspService.rename(document, position, newName, cancellationToken);
     }
 }

@@ -208,8 +208,11 @@ export function startServer(options?: LSOptions) {
                     lsConfigManager: configManager,
                     tsserverPath: tsGoServerPath,
                     docManager: docManager,
-                    rootUri: evt.rootUri,
-                    workspaceFolders: workspaceFolders
+                    serverInitializationOptions: {
+                        rootUri: evt.rootUri,
+                        workspaceFolders: evt.workspaceFolders ?? [],
+                        locale: evt.locale
+                    }
                 });
                 useTsGoServer = true;
                 pluginHost.register(new TypeScriptGoPlugin(tsApiService));
@@ -218,6 +221,7 @@ export function startServer(options?: LSOptions) {
                 if (error instanceof Error) {
                     console.error(`Failed to initialize TypeScript Go server: ${error.message}`);
                 }
+                useTsGoServer = false;
             }
         }
 
