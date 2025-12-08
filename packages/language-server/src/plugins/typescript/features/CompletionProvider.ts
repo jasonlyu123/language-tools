@@ -271,7 +271,8 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionRe
             offset,
             {
                 ...userPreferences,
-                triggerCharacter: validTriggerCharacter
+                triggerCharacter: validTriggerCharacter,
+                includeSymbol: true
             },
             formatSettings
         );
@@ -318,7 +319,22 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionRe
 
         const completionItems: CompletionItem[] = customCompletions;
         const isValidCompletion = createIsValidCompletion(document, position, !!tsDoc.parserError);
+        const typeChecker = lang.getProgram()?.getTypeChecker();
+        const reExportComponents = new Set<ts.Symbol>();
         const addCompletion = (entry: ts.CompletionEntry, asStore: boolean) => {
+            let isReExportSvelteComponent = false;
+            if (typeChecker && entry.symbol && entry.symbol.flags & ts.SymbolFlags.Alias) {
+                const symbol = typeChecker.getAliasedSymbol(entry.symbol);
+                if (isGeneratedSvelteComponentName(entry.name)) {
+                    if (reExportComponents.has(symbol)) {
+                        return;
+                    }
+                } else if (isGeneratedSvelteComponentName(symbol.name)) {
+                    reExportComponents.add(symbol);
+                    isReExportSvelteComponent = true;
+                }
+            }
+
             if (isValidCompletion(entry)) {
                 let completion = this.toCompletionItem(
                     tsDoc,
@@ -329,7 +345,8 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionRe
                     commitCharactersOptions,
                     asStore,
                     existingImports,
-                    preferComponents
+                    preferComponents,
+                    isReExportSvelteComponent
                 );
                 if (completion) {
                     completionItems.push(
@@ -682,7 +699,8 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionRe
         commitCharactersOptions: CommitCharactersOptions,
         asStore: boolean,
         existingImports: Set<string>,
-        preferComponents: boolean
+        preferComponents: boolean,
+        isReExportSvelteComponent: boolean
     ): AppCompletionItem<CompletionResolveInfo> | null {
         const completionLabelAndInsert = this.getCompletionLabelAndInsert(snapshot, comp);
         if (!completionLabelAndInsert) {
@@ -691,6 +709,8 @@ export class CompletionsProviderImpl implements CompletionsProvider<CompletionRe
 
         let { label, insertText, isSvelteComp, isRunesCompletion, replacementSpan } =
             completionLabelAndInsert;
+
+        isSvelteComp = isSvelteComp || isReExportSvelteComponent;
         // TS may suggest another Svelte component even if there already exists an import
         // with the same name, because under the hood every Svelte component is postfixed
         // with `__SvelteComponent`. In this case, filter out this completion by returning null.

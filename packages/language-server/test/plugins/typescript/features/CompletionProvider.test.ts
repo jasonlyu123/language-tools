@@ -1837,6 +1837,26 @@ describe('CompletionProviderImpl', function () {
         }
     });
 
+    it.only('filter duplicate re-export component auto-import', async () => {
+        const { completionProvider, document } = setup('importcompletions_re-export.svelte');
+
+        const completions = await completionProvider.getCompletions(
+            document,
+            {
+                line: 0,
+                character: 3
+            },
+            {
+                triggerKind: CompletionTriggerKind.Invoked
+            }
+        );
+
+        const items = completions?.items.filter((item) => item.label === 'ReExport');
+
+        assert.strictEqual(items?.length, 1);
+        debugger;
+    });
+
     // Hacky, but it works. Needed due to testing both new and old transformation
     after(() => {
         __resetCache();
