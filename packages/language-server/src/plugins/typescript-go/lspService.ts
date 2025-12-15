@@ -88,6 +88,8 @@ export interface TsApiServiceOptions {
     };
 }
 
+// TODO: ts go position encoding is utf-8, convert that to utf-16
+
 export interface ProjectContainer {
     host: LSProvider;
 }
