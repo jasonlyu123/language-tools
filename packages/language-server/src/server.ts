@@ -23,7 +23,8 @@ import {
     SemanticTokensRefreshRequest,
     InlayHintRefreshRequest,
     DidChangeWatchedFilesNotification,
-    RelativePattern
+    RelativePattern,
+    DidChangeWatchedFilesRegistrationOptions
 } from 'vscode-languageserver';
 import { IPCMessageReader, IPCMessageWriter, createConnection } from 'vscode-languageserver/node';
 import { DiagnosticsManager } from './lib/DiagnosticsManager';
@@ -54,7 +55,7 @@ import { createLanguageServices } from './plugins/css/service';
 import { FileSystemProvider } from './plugins/css/FileSystemProvider';
 import { TypeScriptGoPlugin } from './plugins/typescript-go/TypeScriptGoPlugin';
 import { TsApiService } from './plugins/typescript-go/lspService';
-import { setTimeout } from 'node:timers/promises';
+import { resolveTsGoServerPath as resolveTsdkConfig } from './plugins/typescript-go/tsdkConfig';
 
 namespace TagCloseRequest {
     export const type: RequestType<TextDocumentPositionParams, string | null, any> =
@@ -204,14 +205,24 @@ export function startServer(options?: LSOptions) {
         let useTsGoServer = false;
         if (tsGoServerPath) {
             try {
+                const tsdkPath = await resolveTsdkConfig(
+                    evt.initializationOptions?.configuration?.typescript,
+                    workspaceFolders
+                );
                 const tsApiService = new TsApiService({
                     lsConfigManager: configManager,
-                    tsserverPath: tsGoServerPath,
+                    tsserverPath: tsdkPath ?? tsGoServerPath,
                     docManager: docManager,
                     serverInitializationOptions: {
                         rootUri: evt.rootUri,
                         workspaceFolders: evt.workspaceFolders ?? [],
                         locale: evt.locale
+                    },
+                    registerFileWatcher: (watchOptions: DidChangeWatchedFilesRegistrationOptions) => {
+                        connection?.client.register(
+                            DidChangeWatchedFilesNotification.type,
+                            watchOptions
+                        );
                     }
                 });
                 useTsGoServer = true;

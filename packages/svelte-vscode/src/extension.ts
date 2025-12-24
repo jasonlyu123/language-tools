@@ -33,7 +33,7 @@ import { addFindComponentReferencesListener } from './typescript/findComponentRe
 import { addFindFileReferencesListener } from './typescript/findFileReferences';
 import { setupSvelteKit } from './sveltekit';
 import { resolveCodeLensMiddleware } from './middlewares';
-import { getBuiltinExePath } from './typescript/tsgo';
+import { createTypeScriptGoInfo } from './typescript/tsgo';
 
 namespace TagCloseRequest {
     export const type: RequestType<TextDocumentPositionParams, string, any> = new RequestType(
@@ -559,26 +559,4 @@ function warnIfOldExtensionInstalled() {
                 'Command line: "code --uninstall-extension JamesBirtles.svelte-vscode"'
         );
     }
-}
-function createTypeScriptGoInfo() {
-    const useTsGo = workspace.getConfiguration('typescript').get<boolean>('experimental.useTsgo');
-    if (!useTsGo) {
-        return undefined;
-    }
-    const tsGoExtension = extensions.getExtension('TypeScriptTeam.native-preview');
-    if (!tsGoExtension) {
-        return undefined;
-    }
-
-    const extensionUri = tsGoExtension.extensionUri;
-    if (!extensionUri) {
-        return undefined;
-    }
-
-    return {
-        serverPath: getBuiltinExePath({
-            asAbsolutePath: (relativePath: string) =>
-                Uri.joinPath(extensionUri, relativePath).fsPath
-        })
-    };
 }

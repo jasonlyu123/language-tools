@@ -10,6 +10,8 @@ import {
     Diagnostic,
     DidChangeConfigurationNotification,
     DidChangeTextDocumentNotification,
+    DidChangeWatchedFilesNotification,
+    DidChangeWatchedFilesRegistrationOptions,
     DidCloseTextDocumentNotification,
     DidOpenTextDocumentNotification,
     DocumentDiagnosticRequest,
@@ -21,6 +23,8 @@ import {
     InitializedNotification,
     Location,
     LocationLink,
+    LogMessageNotification,
+    MessageType,
     Position,
     PrepareRenameRequest,
     ProtocolConnection,
@@ -30,6 +34,7 @@ import {
     ReferenceContext,
     ReferencesRequest,
     RegistrationRequest,
+    RelativePattern,
     RenameRequest,
     TextEdit,
     WorkspaceEdit,
@@ -43,10 +48,16 @@ import {
     DocumentManager,
     mapLocationToOriginal,
     mapRangeToGenerated,
-    mapRangeToOriginal
+    mapRangeToOriginal,
+    mapRangeToOriginalFallbackStartOfFile
 } from '../../lib/documents';
 import { LSConfigManager } from '../../ls-config';
-import { createGetCanonicalFileName, isNotNullOrUndefined, pathToUrl } from '../../utils';
+import {
+    createGetCanonicalFileName,
+    isNotNullOrUndefined,
+    pathToUrl,
+    urlToPath
+} from '../../utils';
 import {
     CodeLensProvider,
     DefinitionsProvider,
@@ -62,6 +73,7 @@ import { DocumentSnapshot } from '../typescript/DocumentSnapshot';
 import { dirname } from 'node:path';
 import { internalHelpers } from 'svelte2tsx';
 import ts, { ScriptKind } from 'typescript';
+import { Logger } from '../../logger';
 
 const toVirtualSvelteFilePath = (uri: string, kind: ScriptKind): string => {
     return uri /*+ (kind === ScriptKind.TS ? '.ts' : '.js')*/;
@@ -86,9 +98,8 @@ export interface TsApiServiceOptions {
     serverInitializationOptions: Partial<InitializeParams> & {
         workspaceFolders: WorkspaceFolder[];
     };
+    registerFileWatcher?: (pattern: DidChangeWatchedFilesRegistrationOptions) => void;
 }
-
-// TODO: ts go position encoding is utf-8, convert that to utf-16
 
 export interface ProjectContainer {
     host: LSProvider;
@@ -113,7 +124,8 @@ export class TsApiService
     private readonly svelteTsPath: string;
 
     constructor(options: TsApiServiceOptions) {
-        this.useCaseSensitiveFileNames = !fs.existsSync(__filename.toUpperCase());
+        this.useCaseSensitiveFileNames =
+            process.platform === 'win32' || !fs.existsSync(__filename.toUpperCase());
         this.getCanonicalFileName = createGetCanonicalFileName(this.useCaseSensitiveFileNames);
         this.options = options;
         options.docManager?.on('documentOpen', async (document: Document) => {
@@ -265,7 +277,10 @@ export class TsApiService
             locale: options.serverInitializationOptions.locale,
             capabilities: {
                 textDocument: {
-                    diagnostic: clientCapabilities?.textDocument?.diagnostic,
+                    diagnostic: {
+                        ...clientCapabilities?.textDocument?.publishDiagnostics,
+                        ...clientCapabilities?.textDocument?.diagnostic,
+                    },
                     hover: clientCapabilities?.textDocument?.hover,
                     definition: clientCapabilities?.textDocument?.definition,
                     // used by TS GO server to extract diagnostics capabilities
@@ -281,14 +296,80 @@ export class TsApiService
                 }
             },
             initializationOptions: {
-                codeLensShowLocationsCommandName: 'editor.action.showReferences'
+                codeLensShowLocationsCommandName: 'editor.action.showReferences',
+                extraFileExtensions: [
+                    {
+                        extension: 'svelte',
+                        isMixedContent: true,
+                        scriptKind: ts.ScriptKind.Deferred
+                    }
+                ]
             }
         };
+        connection.onNotification(LogMessageNotification.type, (params) => {
+            switch (params.type) {
+                case MessageType.Error:
+                    Logger.error(`[ts go] [error]: ${params.message}`);
+                    break;
+                case MessageType.Warning:
+                    Logger.log(`[ts go] [warn]: ${params.message}`);
+                    break;
+                case MessageType.Info:
+                    Logger.log(`[ts go] [info]: ${params.message}`);
+                    break;
+                case MessageType.Log:
+                    Logger.log(`[ts go]: ${params.message}`);
+                    break;
+                case MessageType.Debug:
+                    Logger.debug(`[ts go] [debug]: ${params.message}`);
+                    break;
+            }
+        });
         connection.onRequest(RegistrationRequest.type, (params) => {
-            console.log('Received registration request:', JSON.stringify(params));
+            // console.log('Received registration request:', JSON.stringify(params));
+            for (const registration of params.registrations) {
+                if (registration.method === DidChangeWatchedFilesNotification.type.method) {
+                    options.registerFileWatcher?.(registration.registerOptions);
+                }
+            }
 
             return;
         });
+
+        connection.onRequest(
+            '$/extensibility/language/loadFile',
+            async (params: { uri: string }) => {
+                console.log('Load file request:', params);
+                const filePath = urlToPath(params.uri);
+                if (!filePath || !ts.sys.fileExists(filePath)) {
+                    return null;
+                }
+                const sveltePackageInfo = getPackageInfo('svelte', filePath);
+                const svelteCompiler = importSvelte(filePath);
+                const result = DocumentSnapshot.fromFilePath(
+                    filePath,
+                    (filePath, text) => new Document(pathToUrl(filePath), text),
+                    {
+                        parse: svelteCompiler?.parse,
+                        transformOnTemplateError: true,
+                        typingsNamespace: 'svelteHTML',
+                        version: svelteCompiler.VERSION,
+                        shimPaths: internalHelpers.get_global_types(
+                            ts.sys,
+                            sveltePackageInfo.version?.major === 3,
+                            sveltePackageInfo.path,
+                            this.svelteTsPath
+                        )
+                    },
+                    ts.sys
+                );
+                this.documentSnapshots.set(params.uri, result);
+                return {
+                    content: result.getFullText(),
+                    scriptKind: result.scriptKind
+                };
+            }
+        );
         connection.listen();
         return connection
             .sendRequest(InitializeRequest.type, initializeParams)
@@ -417,11 +498,26 @@ export class TsApiService
                     return link;
                 }
 
-                const targetRange = mapLocationToOriginal(tsDoc, link.targetRange);
+                const targetSnapshot = this.documentSnapshots.get(link.targetUri);
+                if (!targetSnapshot) {
+                    return;
+                }
+                const targetRange = {
+                    uri: pathToUrl(targetSnapshot.filePath),
+                    range: mapRangeToOriginalFallbackStartOfFile(targetSnapshot, link.targetRange)
+                };
+                const originSelectionRange = link.originSelectionRange
+                    ? mapRangeToOriginal(tsDoc, link.originSelectionRange)
+                    : undefined;
+                const targetSelectionRange = mapRangeToOriginalFallbackStartOfFile(
+                    targetSnapshot,
+                    link.targetSelectionRange
+                );
                 return LocationLink.create(
                     targetRange.uri,
                     targetRange.range,
-                    mapRangeToOriginal(tsDoc, link.targetSelectionRange)
+                    targetSelectionRange,
+                    originSelectionRange
                 );
             })
             .filter(isNotNullOrUndefined);

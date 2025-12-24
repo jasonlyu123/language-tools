@@ -9,7 +9,7 @@ import {
     SymbolKind,
     Location
 } from 'vscode-languageserver';
-import { Document, isInTag, mapLocationToOriginal, mapRangeToOriginal } from '../../lib/documents';
+import { Document, isInTag, mapLocationToOriginal, mapRangeToOriginal, mapUnmappedToTheStartOfFile } from '../../lib/documents';
 import { GetCanonicalFileName, pathToUrl } from '../../utils';
 import { DocumentSnapshot, SvelteDocumentSnapshot } from './DocumentSnapshot';
 
@@ -114,17 +114,6 @@ export function convertToLocationForReferenceOrDefinition(
     mapUnmappedToTheStartOfFile(location.range);
 
     return location;
-}
-
-/**Some definition like the svelte component class definition don't exist in the original, so we map to 0,1*/
-function mapUnmappedToTheStartOfFile(range: Range) {
-    if (range.start.line < 0) {
-        range.start.line = 0;
-        range.start.character = 1;
-    }
-    if (range.end.line < 0) {
-        range.end = range.start;
-    }
 }
 
 export function hasNonZeroRange({ range }: { range?: Range }): boolean {
