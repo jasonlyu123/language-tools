@@ -68,7 +68,7 @@ import {
     RenameProvider,
     Resolvable
 } from '../interfaces';
-import { DocumentSnapshot } from '../typescript/DocumentSnapshot';
+import { DocumentSnapshot, SvelteSnapshotOptions } from '../typescript/DocumentSnapshot';
 // import { toVirtualSvelteFilePath } from '../typescript/utils';
 import { dirname } from 'node:path';
 import { internalHelpers } from 'svelte2tsx';
@@ -279,7 +279,7 @@ export class TsApiService
                 textDocument: {
                     diagnostic: {
                         ...clientCapabilities?.textDocument?.publishDiagnostics,
-                        ...clientCapabilities?.textDocument?.diagnostic,
+                        ...clientCapabilities?.textDocument?.diagnostic
                     },
                     hover: clientCapabilities?.textDocument?.hover,
                     definition: clientCapabilities?.textDocument?.definition,
@@ -339,28 +339,14 @@ export class TsApiService
         connection.onRequest(
             '$/extensibility/language/loadFile',
             async (params: { uri: string }) => {
-                console.log('Load file request:', params);
                 const filePath = urlToPath(params.uri);
                 if (!filePath || !ts.sys.fileExists(filePath)) {
                     return null;
                 }
-                const sveltePackageInfo = getPackageInfo('svelte', filePath);
-                const svelteCompiler = importSvelte(filePath);
                 const result = DocumentSnapshot.fromFilePath(
                     filePath,
                     (filePath, text) => new Document(pathToUrl(filePath), text),
-                    {
-                        parse: svelteCompiler?.parse,
-                        transformOnTemplateError: true,
-                        typingsNamespace: 'svelteHTML',
-                        version: svelteCompiler.VERSION,
-                        shimPaths: internalHelpers.get_global_types(
-                            ts.sys,
-                            sveltePackageInfo.version?.major === 3,
-                            sveltePackageInfo.path,
-                            this.svelteTsPath
-                        )
-                    },
+                    this.loadSvelte2tsxOptions(filePath),
                     ts.sys
                 );
                 this.documentSnapshots.set(params.uri, result);
@@ -387,22 +373,35 @@ export class TsApiService
     }
 
     private lastDiagnostics: Map<string, Diagnostic[]> = new Map();
+    private shimPathsCache: Map<string, string[]> = new Map();
 
-    private createDocumentSnapshot(filePath: string, document: Document): DocumentSnapshot {
+    private loadSvelte2tsxOptions(filePath: string): SvelteSnapshotOptions {
         const sveltePackageInfo = getPackageInfo('svelte', filePath);
         const svelteCompiler = importSvelte(filePath);
-        const result = DocumentSnapshot.fromDocument(document, {
-            parse: svelteCompiler?.parse,
-            transformOnTemplateError: true,
-            typingsNamespace: 'svelteHTML',
-            version: svelteCompiler.VERSION,
-            shimPaths: internalHelpers.get_global_types(
+        let shimPaths = this.shimPathsCache.get(sveltePackageInfo.path);
+        if (!shimPaths) {
+            shimPaths = internalHelpers.get_global_types(
                 ts.sys,
                 sveltePackageInfo.version?.major === 3,
                 sveltePackageInfo.path,
                 this.svelteTsPath
-            )
-        });
+            );
+            this.shimPathsCache.set(sveltePackageInfo.path, shimPaths);
+        }
+        return {
+            parse: svelteCompiler?.parse,
+            transformOnTemplateError: true,
+            typingsNamespace: 'svelteHTML',
+            version: svelteCompiler.VERSION,
+            shimPaths
+        };
+    }
+
+    private createDocumentSnapshot(filePath: string, document: Document): DocumentSnapshot {
+        const result = DocumentSnapshot.fromDocument(
+            document,
+            this.loadSvelte2tsxOptions(filePath)
+        );
 
         this.documentSnapshots.set(document.uri, result);
 
