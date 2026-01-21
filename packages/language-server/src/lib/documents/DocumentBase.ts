@@ -1,4 +1,4 @@
-import { Position, Range, TextDocument } from 'vscode-languageserver';
+import { Position, Range, TextDocument, TextDocumentChangeEvent, TextDocumentContentChangeEvent } from 'vscode-languageserver';
 import { getLineOffsets, offsetAt, positionAt } from './utils';
 
 /**
@@ -72,28 +72,4 @@ export abstract class ReadableDocument implements TextDocument {
     }
 
     abstract languageId: string;
-}
-
-/**
- * Represents a textual document that can be manipulated.
- */
-export abstract class WritableDocument extends ReadableDocument {
-    /**
-     * Set the text content of the document.
-     * Implementers should set `lineOffsets` to `undefined` here.
-     * @param text The new text content
-     */
-    abstract setText(text: string): void;
-
-    /**
-     * Update the text between two positions.
-     * @param text The new text slice
-     * @param start Start offset of the new text
-     * @param end End offset of the new text
-     */
-    update(text: string, start: number, end: number): void {
-        this.lineOffsets = undefined;
-        const content = this.getText();
-        this.setText(content.slice(0, start) + text + content.slice(end));
-    }
 }

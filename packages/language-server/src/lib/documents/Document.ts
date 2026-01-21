@@ -1,16 +1,22 @@
 import { urlToPath } from '../../utils';
-import { WritableDocument } from './DocumentBase';
-import { extractScriptTags, extractStyleTag, extractTemplateTag, TagInformation } from './utils';
+import { ReadableDocument } from './DocumentBase';
+import {
+    extractScriptTags,
+    extractStyleTag,
+    extractTemplateTag,
+    offsetIsInTag,
+    TagInformation
+} from './utils';
 import { parseHtml } from './parseHtml';
 import { SvelteConfig, configLoader } from './configLoader';
 import { HTMLDocument } from 'vscode-html-languageservice';
-import { Range } from 'vscode-languageserver';
+import { Range, TextDocumentContentChangeEvent } from 'vscode-languageserver';
 import { importSvelte } from '../../importPackage';
 
 /**
  * Represents a text document contains a svelte component.
  */
-export class Document extends WritableDocument {
+export class Document extends ReadableDocument {
     languageId = 'svelte';
     scriptInfo: TagInformation | null = null;
     moduleScriptInfo: TagInformation | null = null;
@@ -107,6 +113,54 @@ export class Document extends WritableDocument {
      */
     setText(text: string) {
         this.content = text;
+        this.version++;
+        this.lineOffsets = undefined;
+        this.updateDocInfo();
+    }
+
+    update(changes: TextDocumentContentChangeEvent[]) {
+        if (changes.length === 1 && !('range' in changes[0])) {
+            // Full text update
+            if (changes[0].text !== this.content) {
+                this.setText(changes[0].text);
+            }
+            return;
+        }
+
+        let newText = this.content;
+        let allInInstanceScript = false;
+        let allInStyle = false;
+        const pendingChanges: { start: number; end: number; text: string }[] = [];
+        for (const change of changes) {
+            let start = 0;
+            let end = 0;
+            if ('range' in change) {
+                start = this.offsetAt(change.range.start);
+                end = this.offsetAt(change.range.end);
+            } else {
+                end = this.getTextLength();
+            }
+
+            pendingChanges.push({ start, end, text: change.text });
+
+            const inScript =
+                offsetIsInTag(start, this.scriptInfo) && offsetIsInTag(end, this.scriptInfo);
+        
+            const inStyle =
+                !inScript &&
+                offsetIsInTag(start, this.styleInfo) &&
+                offsetIsInTag(end, this.styleInfo);
+
+            allInInstanceScript = allInInstanceScript || inScript;
+            allInStyle = allInStyle || inStyle;
+        }
+
+        const sortedChanges = pendingChanges.sort((a, b) => b.end - a.end);
+        for (const change of sortedChanges) {
+            newText = newText.slice(0, change.start) + change.text + newText.slice(change.end);
+        }
+
+        this.content = newText;
         this.version++;
         this.lineOffsets = undefined;
         this.updateDocInfo();

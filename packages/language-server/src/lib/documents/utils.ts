@@ -273,6 +273,13 @@ export function isInTag(
     return !!tagInfo && isInRange(Range.create(tagInfo.startPos, tagInfo.endPos), position);
 }
 
+export function offsetIsInTag(
+    offset: number,
+    tagInfo: TagInformation | null 
+) : tagInfo is TagInformation {
+    return !!tagInfo && offset >= tagInfo.start && offset <= tagInfo.end;
+}
+
 export function isRangeInTag(
     range: Range,
     tagInfo: TagInformation | null

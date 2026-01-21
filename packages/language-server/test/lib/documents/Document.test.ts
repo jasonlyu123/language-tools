@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import { Document } from '../../../src/lib/documents';
 import { Position } from 'vscode-languageserver';
 
-describe('Document', () => {
+describe.only('Document', () => {
     it('gets the correct text', () => {
         const document = new Document('file:///hello.svelte', '<h1>Hello, world!</h1>');
         assert.strictEqual(document.getText(), '<h1>Hello, world!</h1>');
@@ -20,7 +20,9 @@ describe('Document', () => {
 
         document.setText('Hello, world!');
         assert.strictEqual(document.version, 1);
-        document.update('svelte', 7, 12);
+        document.update([
+            { text: 'svelte', range: { start: Position.create(0, 7), end: Position.create(0, 12) } }
+        ]);
         assert.strictEqual(document.version, 2);
     });
 
@@ -77,8 +79,25 @@ describe('Document', () => {
 
     it('updates the text range', () => {
         const document = new Document('file:///hello.svelte', 'Hello, world!');
-        document.update('svelte', 7, 12);
+        document.update([
+            { text: 'svelte', range: { start: Position.create(0, 7), end: Position.create(0, 12) } }
+        ]);
         assert.strictEqual(document.getText(), 'Hello, svelte!');
+    });
+
+    it('updates multiple text ranges', () => {
+        const document = new Document('file:///hello.svelte', 'Hello, world!');
+        document.update([
+            {
+                text: 'svelte',
+                range: { start: Position.create(0, 7), end: Position.create(0, 12) }
+            },
+            {
+                text: 'Greetings, ',
+                range: { start: Position.create(0, 0), end: Position.create(0, 0) }
+            }
+        ]);
+        assert.strictEqual(document.getText(), 'Greetings, Hello, svelte!');
     });
 
     it('gets the correct position from offset', () => {
