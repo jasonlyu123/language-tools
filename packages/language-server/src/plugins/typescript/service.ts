@@ -149,6 +149,7 @@ export interface LanguageServiceDocumentContext {
     projectService: ProjectService | undefined;
     watchDirectory: ((patterns: RelativePattern[]) => void) | undefined;
     nonRecursiveWatchPattern: string | undefined;
+    enableIncrementalUpdates?: boolean;
 }
 
 export async function getService(
@@ -428,7 +429,8 @@ async function createLanguageService(
         parse: svelteCompiler?.parse,
         version: svelteCompiler?.VERSION,
         transformOnTemplateError: docContext.transformOnTemplateError,
-        typingsNamespace: raw?.svelteOptions?.namespace || 'svelteHTML'
+        typingsNamespace: raw?.svelteOptions?.namespace || 'svelteHTML',
+        enableIncrementalUpdates: docContext.enableIncrementalUpdates
     };
 
     const project = initLsCacheProject();

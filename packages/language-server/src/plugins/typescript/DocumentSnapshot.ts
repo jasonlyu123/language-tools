@@ -104,6 +104,7 @@ export interface SvelteSnapshotOptions {
     transformOnTemplateError: boolean;
     typingsNamespace: string;
     emitJsDoc?: boolean;
+    enableIncrementalUpdates?: boolean;
     rewriteExternalImports?: {
         workspacePath: string;
         generatedPath: string;
@@ -134,7 +135,8 @@ export namespace DocumentSnapshot {
             nrPrependedLines,
             exportedNames,
             tsxMap,
-            htmlAst
+            htmlAst,
+            options.enableIncrementalUpdates
         );
     }
 
@@ -319,7 +321,8 @@ export class SvelteDocumentSnapshot implements DocumentSnapshot {
         private readonly nrPrependedLines: number,
         private readonly exportedNames: IExportedNames,
         private readonly tsxMap?: EncodedSourceMap,
-        private readonly htmlAst?: TemplateNode
+        private readonly htmlAst?: TemplateNode,
+        private readonly enableIncrementalUpdates = false
     ) {}
 
     get filePath() {
@@ -351,6 +354,9 @@ export class SvelteDocumentSnapshot implements DocumentSnapshot {
     }
 
     getChangeRange(oldSnapshot: ts.IScriptSnapshot) {
+        if (!this.enableIncrementalUpdates) {
+            return undefined
+        }
         return computeChangeRange(oldSnapshot.getText(0, oldSnapshot.getLength()), this.text);
     }
 
