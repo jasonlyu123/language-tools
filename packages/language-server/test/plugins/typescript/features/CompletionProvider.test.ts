@@ -294,9 +294,16 @@ describe('CompletionProviderImpl', function () {
         );
 
         const item = completions!.items.find((item) => item.label === 'custom-element');
+        assert.ok(item);
+        await completionProvider.resolveCompletion(document, item);
+        delete item.data;
 
         assert.deepStrictEqual(item, <CompletionItem>{
             label: 'custom-element',
+            documentation: {
+                value: 'Custom doc for custom element',
+                kind: 'markdown'
+            },
             kind: CompletionItemKind.Property,
             commitCharacters: [],
             textEdit: {
@@ -1879,5 +1886,51 @@ describe('CompletionProviderImpl', function () {
 
         const item = completions?.items.find((item) => item.label === 'hi');
         assert.ok(item);
+    });
+
+    it('provides namespace component completions for Svelte 5+', async () => {
+        const { completionProvider, document } = setup('namespaced-v5.svelte');
+
+        const completions = await completionProvider.getCompletions(
+            document,
+            Position.create(4, 12),
+            {
+                triggerKind: CompletionTriggerKind.Invoked
+            }
+        );
+
+        const item = completions?.items.find((item) => item.label === 'ComponentDef');
+        assert.ok(item);
+    });
+
+    it('use correct position for component tag auto-import', async () => {
+        const { completionProvider, document } = setup('importcompletions_unclose-tag.svelte');
+
+        const completionsAssumption = await completionProvider.getCompletions(
+            document,
+            Position.create(0, 4)
+        );
+
+        const itemAssumption = completionsAssumption?.items.find(
+            (item) => item.label === 'Completions'
+        );
+        assert.ok(
+            itemAssumption,
+            `expected this to exist. Otherwise, the "Completions" assertion is wrong`
+        );
+
+        const completions = await completionProvider.getCompletions(
+            document,
+            Position.create(1, 2)
+        );
+
+        const item = completions?.items.find((item) => item.label === 'EmptytextImported');
+        assert.ok(item);
+
+        const shouldNotExistItem = completions?.items.find((item) => item.label === 'Completions');
+        assert.ok(
+            !shouldNotExistItem,
+            'expected auto-import be filtered out by current identifier'
+        );
     });
 });
