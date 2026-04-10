@@ -4,6 +4,7 @@ import {
     DocumentDiagnosticReport,
     FileChangeType,
     LinkedEditingRanges,
+    PrepareRenameResult,
     SemanticTokens,
     SignatureHelpContext,
     TextDocumentContentChangeEvent
@@ -155,7 +156,7 @@ export interface RenameProvider {
         position: Position,
         newName: string
     ): Resolvable<WorkspaceEdit | null>;
-    prepareRename(document: Document, position: Position): Resolvable<Range | null>;
+    prepareRename(document: Document, position: Position): Resolvable<PrepareRenameResult | null>;
 }
 
 export interface FindReferencesProvider {

@@ -36,7 +36,8 @@ import {
     InlayHint,
     WorkspaceSymbol,
     DocumentSymbol,
-    DocumentDiagnosticReport
+    DocumentDiagnosticReport,
+    PrepareRenameResult
 } from 'vscode-languageserver';
 import { Document, DocumentManager, getNodeIfIsInHTMLStartTag } from '../lib/documents';
 import { Logger } from '../logger';
@@ -550,7 +551,7 @@ export class PluginHost implements LSProvider, OnWatchFileChanges {
     async prepareRename(
         textDocument: TextDocumentIdentifier,
         position: Position
-    ): Promise<Range | null> {
+    ): Promise<PrepareRenameResult | null> {
         const document = this.getDocument(textDocument.uri);
 
         return await this.execute<any>(

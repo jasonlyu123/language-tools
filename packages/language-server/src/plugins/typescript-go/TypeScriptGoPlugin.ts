@@ -12,7 +12,7 @@ import {
 import { Document } from '../../lib/documents';
 import { Plugin, Resolvable } from '../interfaces';
 import { TsApiService } from './lspService';
-import { CancellationToken } from 'vscode-languageserver-protocol';
+import { CancellationToken, PrepareRenameResult } from 'vscode-languageserver-protocol';
 import { TsGoHoverProvider } from './features/HoverProvider';
 import { TsGoDefinitionsProvider } from './features/DefinitionsProvider';
 import { TsGoDiagnosticsProvider } from './features/DiagnosticsProvider';
@@ -81,7 +81,10 @@ export class TypeScriptGoPlugin implements Plugin {
         );
     }
 
-    async prepareRename(document: Document, position: Position): Promise<Range | null> {
+    async prepareRename(
+        document: Document,
+        position: Position
+    ): Promise<PrepareRenameResult | null> {
         return this.renameProvider.prepareRename(document, position);
     }
 

@@ -1,7 +1,8 @@
 import {
     CancellationToken,
     Position,
-    Range,
+    PrepareRenameRequest,
+    PrepareRenameResult,
     RenameRequest,
     TextEdit,
     WorkspaceEdit
@@ -74,29 +75,33 @@ export class TsGoRenameProvider implements RenameProvider {
         return { changes };
     }
 
-    async prepareRename(document: Document, position: Position): Promise<Range | null> {
-        // prepare rename is not fully supported yet
+    async prepareRename(
+        document: Document,
+        position: Position
+    ): Promise<PrepareRenameResult | null> {
+        const tsDoc = this.tsApiService.getDocumentSnapshot(document);
+        if (!tsDoc) {
+            return null;
+        }
 
-        // const tsDoc = this.getDocumentSnapshot(document);
-        // if (!tsDoc) {
-        //     return null;
-        // }
+        const generatedPosition = tsDoc.getGeneratedPosition(position);
+        const res = await this.tsApiService.sendRequest(PrepareRenameRequest.type, {
+            textDocument: { uri: document.uri },
+            position: generatedPosition
+        });
 
-        // const generatedPosition = tsDoc.getGeneratedPosition(position);
-        // const res = await this.sendRequest(PrepareRenameRequest.type, {
-        //     textDocument: { uri: toVirtualSvelteFilePath(document.uri, tsDoc.scriptKind) },
-        //     position: generatedPosition,
-        // });
+        if (res === null) {
+            return null;
+        }
+        if ('defaultBehavior' in res) {
+            return res;
+        }
 
-        // if (res === null || !Range.is(res)) {
-        //     return null;
-        // }
-
-        // const mappedRange = mapRangeToOriginal(tsDoc, res);
-        // if (mappedRange.start.line < 0 || mappedRange.end.line < 0) {
-        //     return null;
-        // }
-        // return mappedRange;
-        return { start: position, end: position };
+        const range = 'range' in res ? res.range : res;
+        const mappedRange = mapRangeToOriginal(tsDoc, range);
+        if (mappedRange.start.line < 0 || mappedRange.end.line < 0) {
+            return null;
+        }
+        return 'range' in res ? { range: mappedRange, placeholder: res.placeholder } : mappedRange;
     }
 }
