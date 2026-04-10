@@ -23,22 +23,17 @@ import {
 } from 'vscode-languageserver-protocol';
 import { StreamMessageReader, StreamMessageWriter } from 'vscode-languageserver-protocol/node';
 import { getPackageInfo, importSvelte } from '../../importPackage';
-import {
-    Document,
-    DocumentManager
-} from '../../lib/documents';
+import { Document, DocumentManager } from '../../lib/documents';
 import { LSConfigManager } from '../../ls-config';
-import {
-    createGetCanonicalFileName,
-    pathToUrl,
-    urlToPath
-} from '../../utils';
-import {
-    LSProvider,
-    Resolvable
-} from '../interfaces';
+import { createGetCanonicalFileName, pathToUrl, urlToPath } from '../../utils';
+import { Resolvable } from '../interfaces';
 import { DocumentSnapshot, SvelteSnapshotOptions } from '../typescript/DocumentSnapshot';
 // import { toVirtualSvelteFilePath } from '../typescript/utils';
+import type {
+    API,
+    Snapshot,
+    Project
+} from '@typescript/api/async' with { 'resolution-mode': 'import' };
 import { dirname } from 'node:path';
 import { internalHelpers } from 'svelte2tsx';
 import ts, { ScriptKind } from 'typescript';
@@ -70,10 +65,6 @@ export interface TsApiServiceOptions {
     registerFileWatcher?: (pattern: DidChangeWatchedFilesRegistrationOptions) => void;
 }
 
-export interface ProjectContainer {
-    host: LSProvider;
-}
-
 export class TsApiService {
     private readonly getCanonicalFileName: (fileName: string) => string;
     private readonly useCaseSensitiveFileNames: boolean;
@@ -83,6 +74,8 @@ export class TsApiService {
     private initializePending: Promise<void> | null = null;
     private documentSnapshots: Map<string, DocumentSnapshot> = new Map();
     private readonly svelteTsPath: string;
+
+    private api: API | null = null;
 
     constructor(options: TsApiServiceOptions) {
         this.useCaseSensitiveFileNames =
@@ -297,6 +290,8 @@ export class TsApiService {
             return;
         });
 
+        const apiModulePromise = import('@typescript/api/async');
+
         connection.onRequest(
             '$/extensibility/language/loadFile',
             async (params: { uri: string }) => {
@@ -330,6 +325,12 @@ export class TsApiService {
                         javascript: options.lsConfigManager.getClientTsUserConfig('javascript')
                     }
                 });
+                const apiModule = await apiModulePromise;
+                const apiInfo = await connection.sendRequest<{ pipe: string }>(
+                    'custom/initializeAPISession',
+                    {}
+                );
+                this.api = await apiModule.API.fromLSPConnection({ pipe: apiInfo.pipe });
             });
     }
 
@@ -355,6 +356,22 @@ export class TsApiService {
             version: svelteCompiler.VERSION,
             shimPaths
         };
+    }
+
+    async getApiProject(filePath: string): Promise<Project | undefined> {
+        if (!this.api) {
+            await this.initializePending;
+            if (!this.api) {
+                throw new Error('Failed to initialize TypeScript API session');
+            }
+        }
+        const snapshot = await this.api.updateSnapshot();
+        try {
+            const project = await snapshot.getDefaultProjectForFile(filePath);
+            return project;
+        } catch (error) {
+            return undefined;
+        }
     }
 
     private createDocumentSnapshot(filePath: string, document: Document): DocumentSnapshot {

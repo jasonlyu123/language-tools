@@ -238,7 +238,7 @@ export function startServer(options?: LSOptions) {
                     }
                 });
                 useTsGoServer = true;
-                pluginHost.register(new TypeScriptGoPlugin(tsApiService));
+                pluginHost.register(new TypeScriptGoPlugin(tsApiService, configManager));
                 await tsApiService.start();
             } catch (error) {
                 if (error instanceof Error) {

@@ -19,6 +19,8 @@ import { TsGoDiagnosticsProvider } from './features/DiagnosticsProvider';
 import { TsGoCodeLensProvider } from './features/CodeLensProvider';
 import { TsGoFindReferencesProvider } from './features/FindReferencesProvider';
 import { TsGoRenameProvider } from './features/RenameProvider';
+import { TsGoFindComponentReferencesProvider } from './features/FindComponentReferencesProvider';
+import { LSConfigManager } from '../../ls-config';
 
 export class TypeScriptGoPlugin implements Plugin {
     __name = 'typescript';
@@ -29,14 +31,19 @@ export class TypeScriptGoPlugin implements Plugin {
     private readonly codeLensProvider: TsGoCodeLensProvider;
     private readonly findReferencesProvider: TsGoFindReferencesProvider;
     private readonly renameProvider: TsGoRenameProvider;
+    private readonly findComponentReferencesProvider: TsGoFindComponentReferencesProvider;
 
-    constructor(lspService: TsApiService) {
+    constructor(lspService: TsApiService, lsConfigManager: LSConfigManager) {
         this.lspService = lspService;
         this.hoverProvider = new TsGoHoverProvider(lspService);
         this.definitionsProvider = new TsGoDefinitionsProvider(lspService);
         this.diagnosticsProvider = new TsGoDiagnosticsProvider(lspService);
-        this.codeLensProvider = new TsGoCodeLensProvider(lspService);
-        this.findReferencesProvider = new TsGoFindReferencesProvider(lspService);
+        this.codeLensProvider = new TsGoCodeLensProvider(lspService, lsConfigManager);
+        this.findComponentReferencesProvider = new TsGoFindComponentReferencesProvider(lspService);
+        this.findReferencesProvider = new TsGoFindReferencesProvider(
+            lspService,
+            this.findComponentReferencesProvider
+        );
         this.renameProvider = new TsGoRenameProvider(lspService);
     }
     getDiagnostics(document: Document): Resolvable<Diagnostic[]> {
@@ -95,5 +102,9 @@ export class TypeScriptGoPlugin implements Plugin {
         cancellationToken?: CancellationToken
     ): Promise<WorkspaceEdit | null> {
         return this.renameProvider.rename(document, position, newName, cancellationToken);
+    }
+
+    async findComponentReferences(uri: string): Promise<Location[] | null> {
+        return this.findComponentReferencesProvider.findComponentReferences(uri);
     }
 }

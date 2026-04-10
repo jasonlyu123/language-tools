@@ -8,12 +8,18 @@ import {
 import { FindReferencesProvider } from '../../interfaces';
 import { TsApiService } from '../lspService';
 import { Document, mapRangeToOriginal } from '../../../lib/documents';
+import { TsGoFindComponentReferencesProvider } from './FindComponentReferencesProvider';
 
 export class TsGoFindReferencesProvider implements FindReferencesProvider {
     private readonly tsApiService: TsApiService;
+    private readonly componentReferencesProvider: TsGoFindComponentReferencesProvider;
 
-    constructor(tsApiService: TsApiService) {
+    constructor(
+        tsApiService: TsApiService,
+        componentReferencesProvider: TsGoFindComponentReferencesProvider
+    ) {
         this.tsApiService = tsApiService;
+        this.componentReferencesProvider = componentReferencesProvider;
     }
 
     async findReferences(
@@ -25,6 +31,10 @@ export class TsGoFindReferencesProvider implements FindReferencesProvider {
         const tsDoc = this.tsApiService.getDocumentSnapshot(document);
         if (!tsDoc) {
             return null;
+        }
+
+        if (this.isScriptStartOrEndTag(position, document)) {
+            return this.componentReferencesProvider.findComponentReferences(document.uri);
         }
 
         const generatedPosition = tsDoc.getGeneratedPosition(position);
@@ -49,7 +59,7 @@ export class TsGoFindReferencesProvider implements FindReferencesProvider {
                 result.push(loc);
                 continue;
             }
-        
+
             const snapshot = this.tsApiService.getDocumentSnapshot(loc.uri);
             if (!snapshot) {
                 continue;
@@ -61,5 +71,18 @@ export class TsGoFindReferencesProvider implements FindReferencesProvider {
             result.push(Location.create(loc.uri, mappedRange));
         }
         return result;
+    }
+
+    private isScriptStartOrEndTag(position: Position, document: Document) {
+        if (!document.scriptInfo) {
+            return false;
+        }
+        const { start, end } = document.scriptInfo.container;
+
+        const offset = document.offsetAt(position);
+        return (
+            (offset >= start && offset <= start + '<script'.length) ||
+            (offset >= end - '</script>'.length && offset <= end)
+        );
     }
 }
