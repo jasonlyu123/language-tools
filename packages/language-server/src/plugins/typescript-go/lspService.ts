@@ -2,42 +2,22 @@ import { ChildProcess, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import {
     CancellationToken,
-    CodeLens,
-    CodeLensRequest,
-    CodeLensResolveRequest,
-    DefinitionLink,
-    DefinitionRequest,
-    Diagnostic,
     DidChangeConfigurationNotification,
     DidChangeTextDocumentNotification,
     DidChangeWatchedFilesNotification,
     DidChangeWatchedFilesRegistrationOptions,
     DidCloseTextDocumentNotification,
     DidOpenTextDocumentNotification,
-    DocumentDiagnosticRequest,
-    Hover,
-    HoverRequest,
     InitializeParams,
     InitializeRequest,
     InitializeResult,
     InitializedNotification,
-    Location,
-    LocationLink,
     LogMessageNotification,
     MessageType,
-    Position,
-    PrepareRenameRequest,
     ProtocolConnection,
     ProtocolNotificationType,
     ProtocolRequestType,
-    Range,
-    ReferenceContext,
-    ReferencesRequest,
     RegistrationRequest,
-    RelativePattern,
-    RenameRequest,
-    TextEdit,
-    WorkspaceEdit,
     WorkspaceFolder,
     createProtocolConnection
 } from 'vscode-languageserver-protocol';
@@ -45,27 +25,16 @@ import { StreamMessageReader, StreamMessageWriter } from 'vscode-languageserver-
 import { getPackageInfo, importSvelte } from '../../importPackage';
 import {
     Document,
-    DocumentManager,
-    mapLocationToOriginal,
-    mapRangeToGenerated,
-    mapRangeToOriginal,
-    mapRangeToOriginalFallbackStartOfFile
+    DocumentManager
 } from '../../lib/documents';
 import { LSConfigManager } from '../../ls-config';
 import {
     createGetCanonicalFileName,
-    isNotNullOrUndefined,
     pathToUrl,
     urlToPath
 } from '../../utils';
 import {
-    CodeLensProvider,
-    DefinitionsProvider,
-    DiagnosticsProvider,
-    FindReferencesProvider,
-    HoverProvider,
     LSProvider,
-    RenameProvider,
     Resolvable
 } from '../interfaces';
 import { DocumentSnapshot, SvelteSnapshotOptions } from '../typescript/DocumentSnapshot';
@@ -105,15 +74,7 @@ export interface ProjectContainer {
     host: LSProvider;
 }
 
-export class TsApiService
-    implements
-        DiagnosticsProvider,
-        HoverProvider,
-        DefinitionsProvider,
-        CodeLensProvider,
-        FindReferencesProvider,
-        RenameProvider
-{
+export class TsApiService {
     private readonly getCanonicalFileName: (fileName: string) => string;
     private readonly useCaseSensitiveFileNames: boolean;
     private readonly options: TsApiServiceOptions;
@@ -194,7 +155,7 @@ export class TsApiService
         }
     }
 
-    private async sendRequest<P, R, PR, E, RO>(
+    async sendRequest<P, R, PR, E, RO>(
         type: ProtocolRequestType<P, R, PR, E, RO>,
         params: P,
         token?: CancellationToken
@@ -372,7 +333,6 @@ export class TsApiService
             });
     }
 
-    private lastDiagnostics: Map<string, Diagnostic[]> = new Map();
     private shimPathsCache: Map<string, string[]> = new Map();
 
     private loadSvelte2tsxOptions(filePath: string): SvelteSnapshotOptions {
@@ -408,333 +368,13 @@ export class TsApiService
         return result;
     }
 
-    async getDiagnostics(document: Document): Promise<Diagnostic[]> {
-        const tsDoc = this.getDocumentSnapshot(document);
-        if (!tsDoc) {
-            return [];
-        }
-        const res = await this.sendRequest(DocumentDiagnosticRequest.type, {
-            textDocument: { uri: toVirtualSvelteFilePath(document.uri, tsDoc?.scriptKind) }
-        });
-        if (res.kind !== 'full') {
-            return this.lastDiagnostics.get(document.uri) || [];
-        }
-
-        if (!tsDoc) {
-            return [];
-        }
-        this.lastDiagnostics.set(document.uri, res.items);
-        return res.items
-            .map((item) => ({
-                ...item,
-                range: mapRangeToOriginal(tsDoc, item.range)
-            }))
-            .filter((item) => item.range.start.line >= 0 && item.range.end.line >= 0);
-    }
-
-    async doHover(document: Document, position: Position): Promise<Hover | null> {
-        const tsDoc = this.getDocumentSnapshot(document);
-        if (!tsDoc) {
-            return null;
-        }
-
-        const generatedPosition = tsDoc.getGeneratedPosition(position);
-        if (generatedPosition.line < 0) {
-            return null;
-        }
-        const res = await this.sendRequest(HoverRequest.type, {
-            textDocument: { uri: toVirtualSvelteFilePath(document.uri, tsDoc.scriptKind) },
-            position: generatedPosition
-        });
-        if (!res) {
-            return null;
-        }
-        return {
-            contents: res.contents,
-            range: res.range ? mapRangeToOriginal(tsDoc, res.range) : undefined
-        };
-    }
-
-    async getDefinitions(document: Document, position: Position): Promise<DefinitionLink[]> {
-        const tsDoc = this.getDocumentSnapshot(document);
-        if (!tsDoc) {
-            return Promise.resolve([]);
-        }
-
-        const generatedPosition = tsDoc.getGeneratedPosition(position);
-        const res = await this.sendRequest(DefinitionRequest.type, {
-            textDocument: { uri: toVirtualSvelteFilePath(document.uri, tsDoc.scriptKind) },
-            position: generatedPosition
-        });
-
-        if (!res) {
-            return [];
-        }
-
-        if (!Array.isArray(res)) {
-            const location = mapLocationToOriginal(tsDoc, res.range);
-            return [LocationLink.create(location.uri, location.range, location.range)];
-        }
-
-        return res
-            .map((link) => {
-                if (!LocationLink.is(link)) {
-                    if (link.uri.endsWith('.svelte')) {
-                        const snapshot = this.documentSnapshots.get(link.uri);
-                        if (!snapshot) {
-                            return;
-                        }
-
-                        return LocationLink.create(
-                            pathToUrl(snapshot.filePath),
-                            mapRangeToOriginal(snapshot, link.range),
-                            mapRangeToOriginal(snapshot, link.range)
-                        );
-                    }
-                    return LocationLink.create(link.uri, link.range, link.range);
-                }
-                if (!link.targetUri.endsWith('.svelte')) {
-                    return link;
-                }
-
-                const targetSnapshot = this.documentSnapshots.get(link.targetUri);
-                if (!targetSnapshot) {
-                    return;
-                }
-                const targetRange = {
-                    uri: pathToUrl(targetSnapshot.filePath),
-                    range: mapRangeToOriginalFallbackStartOfFile(targetSnapshot, link.targetRange)
-                };
-                const originSelectionRange = link.originSelectionRange
-                    ? mapRangeToOriginal(tsDoc, link.originSelectionRange)
-                    : undefined;
-                const targetSelectionRange = mapRangeToOriginalFallbackStartOfFile(
-                    targetSnapshot,
-                    link.targetSelectionRange
-                );
-                return LocationLink.create(
-                    targetRange.uri,
-                    targetRange.range,
-                    targetSelectionRange,
-                    originSelectionRange
-                );
-            })
-            .filter(isNotNullOrUndefined);
-    }
-
-    async getCodeLens(document: Document): Promise<CodeLens[] | null> {
-        const tsDoc = this.getDocumentSnapshot(document);
-        if (!tsDoc) {
-            return null;
-        }
-
-        const res = await this.sendRequest(CodeLensRequest.type, {
-            textDocument: { uri: toVirtualSvelteFilePath(document.uri, tsDoc.scriptKind) }
-        });
-
-        if (!res) {
-            return null;
-        }
-
-        return res
-            .map((codeLens) => ({
-                ...codeLens,
-                range: mapRangeToOriginal(tsDoc, codeLens.range)
-                // data: {
-                //     type: codeLens.data.type,
-                //     uri: document.uri
-                // }
-            }))
-            .filter((codeLens) => codeLens.range.start.line >= 0 && codeLens.range.end.line >= 0);
-    }
-
-    async resolveCodeLens(
-        document: Document,
-        codeLensToResolve: CodeLens,
-        cancellationToken?: CancellationToken
-    ): Promise<CodeLens> {
-        const tsDoc = this.getDocumentSnapshot(document);
-        if (!tsDoc || !codeLensToResolve.data?.kind) {
-            return codeLensToResolve;
-        }
-
-        const res = await this.sendRequest(
-            CodeLensResolveRequest.type,
-            {
-                ...codeLensToResolve,
-                range: mapRangeToGenerated(tsDoc, codeLensToResolve.range)
-            },
-            cancellationToken
-        );
-
-        if (!res.command || (res.command.arguments && res.command.arguments.length !== 3)) {
-            return codeLensToResolve;
-        }
-
-        const commandArgs = res.command.arguments;
-        if (!commandArgs) {
-            return {
-                ...codeLensToResolve,
-                command: {
-                    command: res.command.command,
-                    title: res.command.title
-                }
-            };
-        }
-
-        return {
-            ...codeLensToResolve,
-            command: {
-                command: res.command.command,
-                title: res.command.title,
-                arguments: [
-                    commandArgs[0],
-                    commandArgs[1],
-                    (commandArgs[2] as Location[])
-                        .map((loc) => {
-                            const mapped = mapLocationToOriginal(tsDoc, loc.range);
-                            return {
-                                uri: mapped.uri,
-                                range: mapped.range
-                            };
-                        })
-                        .filter((loc) => loc.range.start.line >= 0 && loc.range.end.line >= 0)
-                ]
-            }
-        };
-    }
-
-    async findReferences(
-        document: Document,
-        position: Position,
-        context: ReferenceContext,
-        cancellationToken?: CancellationToken
-    ): Promise<Location[] | null> {
-        const tsDoc = this.getDocumentSnapshot(document);
-        if (!tsDoc) {
-            return null;
-        }
-
-        const generatedPosition = tsDoc.getGeneratedPosition(position);
-        const res = await this.sendRequest(
-            ReferencesRequest.type,
-            {
-                textDocument: { uri: toVirtualSvelteFilePath(document.uri, tsDoc.scriptKind) },
-                position: generatedPosition,
-                context
-            },
-            cancellationToken
-        );
-
-        if (!res) {
-            return null;
-        }
-
-        return res
-            .map((loc) => {
-                if (loc.uri.endsWith('.svelte')) {
-                    const snapshot = this.documentSnapshots.get(loc.uri);
-                    if (!snapshot) {
-                        return null;
-                    }
-                    const mappedRange = mapRangeToOriginal(snapshot, loc.range);
-                    if (mappedRange.start.line < 0 || mappedRange.end.line < 0) {
-                        return null;
-                    }
-                    return Location.create(loc.uri, mappedRange);
-                }
-                return loc;
-            })
-            .filter(isNotNullOrUndefined);
-    }
-
-    async rename(
-        document: Document,
-        position: Position,
-        newName: string,
-        cancellationToken?: CancellationToken
-    ): Promise<WorkspaceEdit | null> {
-        const tsDoc = this.getDocumentSnapshot(document);
-        if (!tsDoc) {
-            return null;
-        }
-
-        const generatedPosition = tsDoc.getGeneratedPosition(position);
-        const res = await this.sendRequest(
-            RenameRequest.type,
-            {
-                textDocument: { uri: toVirtualSvelteFilePath(document.uri, tsDoc.scriptKind) },
-                position: generatedPosition,
-                newName
-            },
-            cancellationToken
-        );
-
-        if (!res || !res.changes) {
-            return null;
-        }
-
-        const changes: Record<string, TextEdit[]> = {};
-
-        for (const [uri, edits] of Object.entries(res.changes)) {
-            if (uri.endsWith('.svelte')) {
-                const snapshot = this.documentSnapshots.get(uri);
-                if (!snapshot) {
-                    continue;
-                }
-                const mappedEdits = edits
-                    .map((edit) => {
-                        const mappedRange = mapRangeToOriginal(snapshot, edit.range);
-                        if (mappedRange.start.line < 0 || mappedRange.end.line < 0) {
-                            return null;
-                        }
-                        return {
-                            range: mappedRange,
-                            newText: edit.newText
-                        };
-                    })
-                    .filter(isNotNullOrUndefined);
-                if (mappedEdits.length > 0) {
-                    changes[uri] = mappedEdits;
-                }
-            } else {
-                changes[uri] = edits;
-            }
-        }
-
-        return { changes };
-    }
-
-    async prepareRename(document: Document, position: Position): Promise<Range | null> {
-        // prepare rename is not fully supported yet
-
-        // const tsDoc = this.getDocumentSnapshot(document);
-        // if (!tsDoc) {
-        //     return null;
-        // }
-
-        // const generatedPosition = tsDoc.getGeneratedPosition(position);
-        // const res = await this.sendRequest(PrepareRenameRequest.type, {
-        //     textDocument: { uri: toVirtualSvelteFilePath(document.uri, tsDoc.scriptKind) },
-        //     position: generatedPosition,
-        // });
-
-        // if (res === null || !Range.is(res)) {
-        //     return null;
-        // }
-
-        // const mappedRange = mapRangeToOriginal(tsDoc, res);
-        // if (mappedRange.start.line < 0 || mappedRange.end.line < 0) {
-        //     return null;
-        // }
-        // return mappedRange;
-        return { start: position, end: position };
-    }
-
-    private getDocumentSnapshot(document: Document): DocumentSnapshot | undefined {
-        const result = this.documentSnapshots.get(document.uri);
+    getDocumentSnapshot(document: Document): DocumentSnapshot | undefined;
+    getDocumentSnapshot(document: string): DocumentSnapshot | undefined;
+    getDocumentSnapshot(document: Document | string): DocumentSnapshot | undefined {
+        const uri = typeof document === 'string' ? document : document.uri;
+        const result = this.documentSnapshots.get(uri);
         if (!result) {
-            console.error(`No TypeScript document snapshot found for ${document.uri}`);
+            console.error(`No TypeScript document snapshot found for ${uri}`);
             return undefined;
         }
         return result;

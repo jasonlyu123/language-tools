@@ -52,7 +52,10 @@ export interface AppCompletionList<T extends TextDocumentIdentifier = any> exten
 }
 
 export interface DiagnosticsProvider {
-    getDiagnostics(document: Document): Resolvable<Diagnostic[]>;
+    getDiagnostics(
+        document: Document,
+        cancellationToken?: CancellationToken
+    ): Resolvable<Diagnostic[]>;
     getDiagnosticsForPullMode(
         document: Document,
         previousResultId?: string,

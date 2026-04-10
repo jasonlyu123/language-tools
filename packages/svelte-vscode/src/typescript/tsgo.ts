@@ -8,18 +8,16 @@ export interface ExeInfo {
     version: string;
 }
 
-function getBuiltinExePath(context: {
-    asAbsolutePath: (relativePath: string) => string;
-}): string {
+function getBuiltinExePath(context: { asAbsolutePath: (relativePath: string) => string }): string {
     return context.asAbsolutePath(
         path.join('./lib', `tsgo${process.platform === 'win32' ? '.exe' : ''}`)
     );
 }
 
 export function createTypeScriptGoInfo(): ExeInfo | undefined {
-    const useTsGo = vscode.workspace
-        .getConfiguration('typescript')
-        .get<boolean>('experimental.useTsgo');
+    const useTsGo =
+        vscode.workspace.getConfiguration('js/ts').get<boolean>('experimental.useTsgo') ||
+        vscode.workspace.getConfiguration('typescript').get<boolean>('experimental.useTsgo');
     if (!useTsGo) {
         return undefined;
     }
