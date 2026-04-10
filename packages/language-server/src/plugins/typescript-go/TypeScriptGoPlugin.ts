@@ -12,7 +12,7 @@ import {
 import { Document } from '../../lib/documents';
 import { Plugin, Resolvable } from '../interfaces';
 import { TsApiService } from './lspService';
-import { CancellationToken, PrepareRenameResult } from 'vscode-languageserver-protocol';
+import { CancellationToken, DocumentDiagnosticReport, PrepareRenameResult } from 'vscode-languageserver-protocol';
 import { TsGoHoverProvider } from './features/HoverProvider';
 import { TsGoDefinitionsProvider } from './features/DefinitionsProvider';
 import { TsGoDiagnosticsProvider } from './features/DiagnosticsProvider';
@@ -48,6 +48,18 @@ export class TypeScriptGoPlugin implements Plugin {
     }
     getDiagnostics(document: Document): Resolvable<Diagnostic[]> {
         return this.diagnosticsProvider.getDiagnostics(document);
+    }
+
+    getDiagnosticsForPullMode(
+        document: Document,
+        previousResultId?: string,
+        cancellationToken?: CancellationToken
+    ): Resolvable<DocumentDiagnosticReport> {
+        return this.diagnosticsProvider.getDiagnosticsForPullMode(
+            document,
+            previousResultId,
+            cancellationToken
+        );
     }
 
     doHover(document: Document, position: Position): Resolvable<Hover | null> {
