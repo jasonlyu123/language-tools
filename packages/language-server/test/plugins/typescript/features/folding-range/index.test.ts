@@ -1,10 +1,10 @@
 import * as assert from 'assert';
-import { readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import ts from 'typescript';
 import { Document, DocumentManager } from '../../../../../src/lib/documents';
 import { LSConfigManager } from '../../../../../src/ls-config';
-import { LSAndTSDocResolver } from '../../../../../src/plugins';
+import { FoldingRangeProvider, LSAndTSDocResolver } from '../../../../../src/plugins';
 import { FoldingRangeProviderImpl } from '../../../../../src/plugins/typescript/features/FoldingRangeProvider';
 import { pathToUrl } from '../../../../../src/utils';
 import {
@@ -12,8 +12,13 @@ import {
     createSnapshotTester,
     updateSnapshotIfFailedOrEmpty
 } from '../../test-utils';
+import {
+    createSnapshotTesterForTsGo,
+    TsGoServiceSetupResult
+} from '../../../typescript-go/test-utils';
+import { TsGoFoldingRangeProvider } from '../../../../../src/plugins/typescript-go/features/FoldingRangeProvider';
 
-function setup(workspaceDir: string, filePath: string) {
+function setupTs6(workspaceDir: string, filePath: string) {
     const docManager = new DocumentManager((textDocument) =>
         Document.createForTest(textDocument.uri, textDocument.text)
     );
@@ -34,18 +39,27 @@ function setup(workspaceDir: string, filePath: string) {
     return { plugin, document, docManager, lsAndTsDocResolver };
 }
 
-async function executeTest(
-    inputFile: string,
-    {
-        workspaceDir,
-        dir
-    }: {
-        workspaceDir: string;
-        dir: string;
-    }
-) {
-    const expected = 'expectedv2.json';
-    const { plugin, document } = setup(workspaceDir, inputFile);
+function setupForTsGo(filePath: string, services: TsGoServiceSetupResult) {
+    const { docManager, lsConfigManager } = services;
+    const plugin = new TsGoFoldingRangeProvider(services.service, lsConfigManager);
+    const document = docManager.openClientDocument(<any>{
+        uri: pathToUrl(filePath),
+        text: ts.sys.readFile(filePath) || ''
+    });
+    return { plugin, document, docManager, lsConfigManager };
+}
+
+async function executeTest({
+    dir,
+    plugin,
+    document,
+    expected
+}: {
+    dir: string;
+    plugin: FoldingRangeProvider;
+    document: Document;
+    expected: string;
+}) {
     const folding = await plugin.getFoldingRanges(document);
 
     const expectedFile = join(dir, expected);
@@ -111,10 +125,43 @@ async function executeTest(
     }
 }
 
-const executeTests = createSnapshotTester(executeTest);
+const executeTestsTs6 = createSnapshotTester(async (inputFile: string, testOptions) => {
+    const { plugin, document } = setupTs6(testOptions.workspaceDir, inputFile);
+    await executeTest({
+        plugin,
+        document,
+        dir: testOptions.dir,
+        expected: 'expectedv2.json'
+    });
+});
+
+const executeTestsTsGo = createSnapshotTesterForTsGo(
+    async (inputFile, testOptions, services) => {
+        const { plugin, document } = setupForTsGo(inputFile, services);
+        await executeTest({
+            plugin,
+            document,
+            dir: testOptions.dir,
+            expected: existsSync(join(testOptions.dir, 'expected_tsgo.json'))
+                ? 'expected_tsgo.json'
+                : 'expectedv2.json'
+        });
+    },
+    {
+        textDocument: { foldingRange: { lineFoldingOnly: true } }
+    }
+);
 
 describe('FoldingRangeProvider', function () {
-    executeTests({
+    executeTestsTs6({
+        dir: join(__dirname, 'fixtures'),
+        workspaceDir: join(__dirname, 'fixtures'),
+        context: this
+    });
+});
+
+describe('FoldingRangeProvider TsGo', function () {
+    executeTestsTsGo({
         dir: join(__dirname, 'fixtures'),
         workspaceDir: join(__dirname, 'fixtures'),
         context: this

@@ -5,6 +5,7 @@ import { existsSync, readdirSync, statSync } from 'fs';
 import { VERSION } from 'svelte/compiler';
 import { Document, DocumentManager } from '../../../src/lib/documents';
 import { LSConfigManager } from '../../../src/ls-config';
+import { ClientCapabilities } from 'vscode-languageserver-protocol';
 
 let tsserverPath: string | undefined;
 const isSvelte5Plus = Number(VERSION.split('.')[0]) >= 5;
@@ -16,7 +17,8 @@ export interface TsGoServiceSetupResult {
 }
 
 export async function createTsGoServiceForTest(
-    workspaceDir: string
+    workspaceDir: string,
+    capabilities?: ClientCapabilities
 ): Promise<TsGoServiceSetupResult> {
     if (!tsserverPath) {
         const pkgPath = require.resolve('@typescript/native-preview/package.json');
@@ -31,6 +33,9 @@ export async function createTsGoServiceForTest(
         Document.createForTest(textDocument.uri, textDocument.text)
     );
     const lsConfigManager = new LSConfigManager();
+    if (capabilities) {
+        lsConfigManager.updateClientCapabilities(capabilities);
+    }
 
     const service = new TsApiService({
         docManager: docManager,
@@ -38,36 +43,34 @@ export async function createTsGoServiceForTest(
         tsserverPath: tsserverPath,
         serverInitializationOptions: {
             workspaceFolders: [{ name: '', uri: pathToUrl(workspaceDir) }],
-            capabilities: {
-                textDocument: {
-                    inlayHint: {
-                        resolveSupport: {
-                            properties: ['data']
-                        }
-                    }
-                }
-            }
+            capabilities
         }
     });
     await service.start();
     return { service, docManager, lsConfigManager };
 }
 
-export function setupSharedServices(workspaceDir: string) {
-    let servicePromise: Promise<TsGoServiceSetupResult> | undefined;
-    before(getOrCreateServices);
+export function setupSharedServices(
+    workspaceDir: string,
+    {
+        capabilities
+    }: {
+        capabilities?: ClientCapabilities;
+    } = {}
+) {
+    let services: TsGoServiceSetupResult;
+    before(async () => {
+        const result = await createTsGoServiceForTest(workspaceDir, capabilities);
+        services = result;
+    });
     after(async () => {
-        const services = await getOrCreateServices();
-        services.service.dispose();
+        services?.service.dispose();
     });
 
-    return getOrCreateServices;
+    return getServices;
 
-    function getOrCreateServices() {
-        if (!servicePromise) {
-            servicePromise = createTsGoServiceForTest(workspaceDir);
-        }
-        return servicePromise;
+    function getServices() {
+        return services;
     }
 }
 
@@ -82,17 +85,17 @@ export function createSnapshotTesterForTsGo<
         inputFile: string,
         testOptions: TestOptions,
         services: TsGoServiceSetupResult
-    ) => Promise<void>
+    ) => Promise<void>,
+    capabilities?: ClientCapabilities
 ) {
     return async (testOptions: TestOptions) => {
-        const getOrCreateServices = setupSharedServices(testOptions.workspaceDir);
+        const getOrCreateServices = setupSharedServices(testOptions.workspaceDir, {
+            capabilities
+        });
         executeTests(testOptions, getOrCreateServices);
     };
 
-    function executeTests(
-        testOptions: TestOptions,
-        getOrCreateServices: () => Promise<TsGoServiceSetupResult>
-    ) {
+    function executeTests(testOptions: TestOptions, getServices: () => TsGoServiceSetupResult) {
         const { dir } = testOptions;
 
         const inputFile = path.join(dir, 'input.svelte');
@@ -105,7 +108,7 @@ export function createSnapshotTesterForTsGo<
                       ? it.only
                       : it;
             _it(dir.substring(__dirname.length), async () => {
-                const services = await getOrCreateServices();
+                const services = getServices();
                 await executeTest(inputFile, testOptions, services);
             });
         } else {
@@ -122,7 +125,7 @@ export function createSnapshotTesterForTsGo<
                                 context: this,
                                 dir: path.join(dir, subDir)
                             },
-                            getOrCreateServices
+                            getServices
                         );
                     }
                 }

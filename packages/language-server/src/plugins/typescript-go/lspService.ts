@@ -14,6 +14,7 @@ import {
     InitializedNotification,
     LogMessageNotification,
     MessageType,
+    PositionEncodingKind,
     ProtocolConnection,
     ProtocolNotificationType,
     ProtocolRequestType,
@@ -27,7 +28,11 @@ import { Document, DocumentManager } from '../../lib/documents';
 import { LSConfigManager } from '../../ls-config';
 import { createGetCanonicalFileName, pathToUrl, urlToPath } from '../../utils';
 import { Resolvable } from '../interfaces';
-import { DocumentSnapshot, SvelteSnapshotOptions } from '../typescript/DocumentSnapshot';
+import {
+    DocumentSnapshot,
+    SvelteDocumentSnapshot,
+    SvelteSnapshotOptions
+} from '../typescript/DocumentSnapshot';
 // import { toVirtualSvelteFilePath } from '../typescript/utils';
 import type { API, Project } from '@typescript/api/async' with { 'resolution-mode': 'import' };
 import { dirname } from 'node:path';
@@ -248,13 +253,31 @@ export class TsApiService {
                     publishDiagnostics: clientCapabilities?.textDocument?.publishDiagnostics,
                     codeLens: clientCapabilities?.textDocument?.codeLens,
                     references: clientCapabilities?.textDocument?.references,
-                    rename: clientCapabilities?.textDocument?.rename
+                    rename: clientCapabilities?.textDocument?.rename,
+                    inlayHint: clientCapabilities?.textDocument?.inlayHint,
+                    signatureHelp: clientCapabilities?.textDocument?.signatureHelp,
+                    foldingRange: clientCapabilities?.textDocument?.foldingRange
+                        ? {
+                              ...clientCapabilities.textDocument?.foldingRange,
+                              // Always set to false to get accurate ranges from the server. Manually convert it to lineFoldingOnly if the client only supports that.
+                              // TODO: Would be a problem if the lsp server is shared with the typescript extension.
+                              lineFoldingOnly: false
+                          }
+                        : undefined
                 },
                 workspace: {
                     workspaceFolders: clientCapabilities?.workspace?.workspaceFolders,
                     didChangeWatchedFiles: clientCapabilities?.workspace?.didChangeWatchedFiles
                     // configuration: clientCapabilities?.workspace?.configuration,
-                }
+                },
+                general: clientCapabilities?.general
+                    ? {
+                          ...clientCapabilities.general,
+                          // we only support javascript's position encoding, don't use the client's capabilities
+                          // utf-16 support is mandatory for the client because of backwards compatibility anyway.
+                          positionEncodings: [PositionEncodingKind.UTF16]
+                      }
+                    : undefined
             },
             initializationOptions: {
                 codeLensShowLocationsCommandName: 'editor.action.showReferences',
@@ -394,7 +417,7 @@ export class TsApiService {
         return result;
     }
 
-    getDocumentSnapshot(document: Document): DocumentSnapshot | undefined;
+    getDocumentSnapshot(document: Document): SvelteDocumentSnapshot | undefined;
     getDocumentSnapshot(document: string): DocumentSnapshot | undefined;
     getDocumentSnapshot(document: Document | string): DocumentSnapshot | undefined {
         const uri = typeof document === 'string' ? document : document.uri;
@@ -413,6 +436,7 @@ export class TsApiService {
             this.connection = null;
         }
         if (this.serverProcess) {
+            this.serverProcess.removeAllListeners();
             this.serverProcess.kill();
             this.serverProcess = null;
         }

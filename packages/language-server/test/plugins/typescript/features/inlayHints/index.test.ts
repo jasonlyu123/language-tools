@@ -191,20 +191,31 @@ const executeTs6Tests = createSnapshotTester(async (inputFile, testOptions) => {
         expected: 'expectedv2.json'
     });
 });
-const executeTsGoTests = createSnapshotTesterForTsGo(async (inputFile, testOptions, services) => {
-    const { plugin, document } = setupForTsGo(inputFile, services);
-    // ensure configuration is synced before running
-    await services.service.syncConfiguration();
-    await executeTest({
-        plugin,
-        document,
-        workspaceDir: testOptions.workspaceDir,
-        dir: testOptions.dir,
-        expected: existsSync(join(testOptions.dir, 'expected_tsgo.json'))
-            ? 'expected_tsgo.json'
-            : 'expectedv2.json'
-    });
-});
+const executeTsGoTests = createSnapshotTesterForTsGo(
+    async (inputFile, testOptions, services) => {
+        const { plugin, document } = setupForTsGo(inputFile, services);
+        // ensure configuration is synced before running
+        await services.service.syncConfiguration();
+        await executeTest({
+            plugin,
+            document,
+            workspaceDir: testOptions.workspaceDir,
+            dir: testOptions.dir,
+            expected: existsSync(join(testOptions.dir, 'expected_tsgo.json'))
+                ? 'expected_tsgo.json'
+                : 'expectedv2.json'
+        });
+    },
+    {
+        textDocument: {
+            inlayHint: {
+                resolveSupport: {
+                    properties: ['data']
+                }
+            }
+        }
+    }
+);
 
 describe('InlayHintProvider', function () {
     executeTs6Tests({
@@ -214,7 +225,7 @@ describe('InlayHintProvider', function () {
     });
 });
 
-describe.only('InlayHintProvider (TS Go)', function () {
+describe('InlayHintProvider (TS Go)', function () {
     executeTsGoTests({
         dir: join(__dirname, 'fixtures'),
         workspaceDir: join(__dirname, 'fixtures'),

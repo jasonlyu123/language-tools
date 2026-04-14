@@ -2,6 +2,7 @@ import { internalHelpers } from 'svelte2tsx';
 import { Range } from 'vscode-languageserver-types';
 import { DocumentSnapshot } from '../../typescript/DocumentSnapshot';
 import type { tsAst } from '../types';
+import { isInGeneratedCode } from '../../typescript/features/utils';
 
 export function rangeHasNegativeLines(range: Range): boolean {
     return range.start.line < 0 || range.end.line < 0;
@@ -185,4 +186,10 @@ function nodeIsMissing(tsAstModule: typeof tsAst, node: tsAst.Node): boolean {
         !node ||
         (node.pos === node.end && node.pos >= 0 && node.kind !== tsAstModule.SyntaxKind.EndOfFile)
     );
+}
+
+export function isRangeInGeneratedCode(tsDoc: DocumentSnapshot, range: Range): boolean {
+    const start = tsDoc.offsetAt(range.start);
+    const end = tsDoc.offsetAt(range.end);
+    return isInGeneratedCode(tsDoc.getFullText(), start, end);
 }

@@ -4,7 +4,7 @@ import { WorkspaceFolder } from 'vscode-languageserver-types';
 import { urlToPath, pathToUrl } from '../../utils';
 
 export async function resolveTsGoServerPath(
-    config: { 'native-preview': { tsdk: string } },
+    config: { 'native-preview'?: { tsdk: string } },
     workspaceFolders: WorkspaceFolder[]
 ): Promise<string | undefined> {
     const exeName = `tsgo${process.platform === 'win32' ? '.exe' : ''}`;

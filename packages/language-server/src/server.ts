@@ -217,10 +217,12 @@ export function startServer(options?: LSOptions) {
         let useTsGoServer = false;
         if (tsGoServerPath) {
             try {
-                const tsdkPath = await resolveTsdkConfig(
-                    evt.initializationOptions?.configuration?.typescript,
-                    workspaceFolders
-                );
+                const tsdkPath = isTrusted
+                    ? await resolveTsdkConfig(
+                          evt.initializationOptions?.configuration?.typescript,
+                          workspaceFolders
+                      )
+                    : undefined;
                 const tsApiService = new TsApiService({
                     lsConfigManager: configManager,
                     tsserverPath: tsdkPath ?? tsGoServerPath,

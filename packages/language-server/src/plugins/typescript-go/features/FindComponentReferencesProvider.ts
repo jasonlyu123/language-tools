@@ -51,7 +51,7 @@ export class TsGoFindComponentReferencesProvider implements FindComponentReferen
             if (rangeHasNegativeLines(mappedRange)) {
                 continue;
             }
-            if (this.isEndTag(mappedRange, snapshot)) {
+            if (TsGoFindComponentReferencesProvider.isEndTag(mappedRange, snapshot)) {
                 continue;
             }
             result.push(Location.create(loc.uri, mappedRange));
@@ -59,7 +59,7 @@ export class TsGoFindComponentReferencesProvider implements FindComponentReferen
         return result;
     }
 
-    private isEndTag(range: Range, snapshot: DocumentSnapshot) {
+    static isEndTag(range: Range, snapshot: DocumentSnapshot) {
         if (!(snapshot instanceof SvelteDocumentSnapshot)) {
             return false;
         }

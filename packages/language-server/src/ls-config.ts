@@ -210,6 +210,9 @@ export interface TSUserConfig {
     referencesCodeLens?: TsReferenceCodeLensConfig;
     implementationsCodeLens?: TsImplementationCodeLensConfig;
     workspaceSymbols?: TsWorkspaceSymbolsConfig;
+    'native-preview'?: {
+        tsdk: string;
+    };
 }
 
 interface TsJsSharedConfig {

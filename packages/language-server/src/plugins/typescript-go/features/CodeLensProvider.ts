@@ -19,6 +19,7 @@ import { hasNonNegativeRange } from './utils';
 import { offsetOfGeneratedComponentExport } from '../../typescript/utils';
 import { SvelteDocumentSnapshot } from '../../typescript/DocumentSnapshot';
 import { LSConfigManager } from '../../../ls-config';
+import { TsGoFindComponentReferencesProvider } from './FindComponentReferencesProvider';
 
 export class TsGoCodeLensProvider implements CodeLensProvider {
     private readonly tsApiService: TsApiService;
@@ -86,16 +87,18 @@ export class TsGoCodeLensProvider implements CodeLensProvider {
             return codeLensToResolve;
         }
 
+        const isComponentReferencesCodeLens =
+            codeLensToResolve.data.kind === 'references' &&
+            codeLensToResolve.range.start.line === 0 &&
+            codeLensToResolve.range.start.character === 0;
+
         const res = await this.tsApiService.sendRequest(
             CodeLensResolveRequest.type,
             {
                 ...codeLensToResolve,
-                range:
-                    codeLensToResolve.range.start.line === 0 &&
-                    codeLensToResolve.range.start.character === 0 &&
-                    tsDoc instanceof SvelteDocumentSnapshot
-                        ? this.getComponentCodeLensPos(tsDoc)
-                        : mapRangeToGenerated(tsDoc, codeLensToResolve.range)
+                range: isComponentReferencesCodeLens
+                    ? this.getComponentCodeLensPos(tsDoc)
+                    : mapRangeToGenerated(tsDoc, codeLensToResolve.range)
             },
             cancellationToken
         );
@@ -116,9 +119,15 @@ export class TsGoCodeLensProvider implements CodeLensProvider {
         }
 
         const locations = commandArgs[2] as Location[];
-        const originalLocations = locations
+        let originalLocations = locations
             .map((loc) => mapLocationToOriginal(tsDoc, loc.range))
             .filter(hasNonNegativeRange);
+
+        if (isComponentReferencesCodeLens) {
+            originalLocations = originalLocations.filter(
+                (loc) => !TsGoFindComponentReferencesProvider.isEndTag(loc.range, tsDoc)
+            );
+        }
 
         return {
             ...codeLensToResolve,

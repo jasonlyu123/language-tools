@@ -4,22 +4,25 @@ import ts from 'typescript';
 import { DocumentHighlight, DocumentHighlightKind } from 'vscode-languageserver';
 import { Document, DocumentManager } from '../../../../src/lib/documents';
 import { LSConfigManager } from '../../../../src/ls-config';
-import { LSAndTSDocResolver } from '../../../../src/plugins';
+import { DocumentHighlightProvider, LSAndTSDocResolver } from '../../../../src/plugins';
 import { DocumentHighlightProviderImpl } from '../../../../src/plugins/typescript/features/DocumentHighlightProvider';
 import { pathToUrl } from '../../../../src/utils';
 import { serviceWarmup } from '../test-utils';
+import { setupSharedServices } from '../../typescript-go/test-utils';
+import { TsGoDocumentHighlightProvider } from '../../../../src/plugins/typescript-go/features/DocumentHighlightProvider';
 
 const testDir = path.join(__dirname, '..');
+const highlightTestDir = path.join(testDir, 'testfiles', 'document-highlight');
+
+function getFullPath(filename: string) {
+    return path.join(highlightTestDir, filename);
+}
 
 describe('DocumentHighlightProvider', function () {
-    const highlightTestDir = path.join(testDir, 'testfiles', 'document-highlight');
     serviceWarmup(this, highlightTestDir);
+    test(setupServices);
 
-    function getFullPath(filename: string) {
-        return path.join(highlightTestDir, filename);
-    }
-
-    function setup(filename: string) {
+    function setupServices() {
         const docManager = new DocumentManager((textDocument) =>
             Document.createForTest(textDocument.uri, textDocument.text)
         );
@@ -29,6 +32,30 @@ describe('DocumentHighlightProvider', function () {
             new LSConfigManager()
         );
         const provider = new DocumentHighlightProviderImpl(lsAndTsDocResolver);
+        return { provider, docManager };
+    }
+});
+
+describe.only('DocumentHighlightProvider (TS GO)', function () {
+    const getServices = setupSharedServices(highlightTestDir);
+
+    test(setupServices);
+
+    function setupServices() {
+        const { docManager, service } = getServices();
+        const provider = new TsGoDocumentHighlightProvider(service);
+        return { provider, docManager };
+    }
+});
+
+function test(
+    setupServices: () => {
+        provider: DocumentHighlightProvider;
+        docManager: DocumentManager;
+    }
+) {
+    function setup(filename: string) {
+        const { provider, docManager } = setupServices();
         const filePath = getFullPath(filename);
         const document = docManager.openClientDocument({
             uri: pathToUrl(filePath),
@@ -102,15 +129,7 @@ describe('DocumentHighlightProvider', function () {
         }
 
         function setup(content: string) {
-            const docManager = new DocumentManager((textDocument) =>
-                Document.createForTest(textDocument.uri, textDocument.text)
-            );
-            const lsAndTsDocResolver = new LSAndTSDocResolver(
-                docManager,
-                [testDir],
-                new LSConfigManager()
-            );
-            const provider = new DocumentHighlightProviderImpl(lsAndTsDocResolver);
+            const { provider, docManager } = setupServices();
             const filePath = getFullPath(`svelte.virtual${Math.random().toFixed(16)}.svelte`);
             const document = docManager.openClientDocument({
                 uri: pathToUrl(filePath),
@@ -121,7 +140,7 @@ describe('DocumentHighlightProvider', function () {
 
         async function testOne(
             document: Document,
-            provider: DocumentHighlightProviderImpl,
+            provider: DocumentHighlightProvider,
             character: number,
             expected: Array<[start: number, end: number]> | null
         ) {
@@ -271,4 +290,4 @@ describe('DocumentHighlightProvider', function () {
             await testOne(document, provider, 28, [[27, 33]]);
         });
     });
-});
+}
