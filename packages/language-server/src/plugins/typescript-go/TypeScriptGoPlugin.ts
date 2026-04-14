@@ -3,6 +3,7 @@ import {
     DefinitionLink,
     Diagnostic,
     Hover,
+    InlayHint,
     Location,
     Position,
     Range,
@@ -12,7 +13,11 @@ import {
 import { Document } from '../../lib/documents';
 import { Plugin, Resolvable } from '../interfaces';
 import { TsApiService } from './lspService';
-import { CancellationToken, DocumentDiagnosticReport, PrepareRenameResult } from 'vscode-languageserver-protocol';
+import {
+    CancellationToken,
+    DocumentDiagnosticReport,
+    PrepareRenameResult
+} from 'vscode-languageserver-protocol';
 import { TsGoHoverProvider } from './features/HoverProvider';
 import { TsGoDefinitionsProvider } from './features/DefinitionsProvider';
 import { TsGoDiagnosticsProvider } from './features/DiagnosticsProvider';
@@ -21,6 +26,7 @@ import { TsGoFindReferencesProvider } from './features/FindReferencesProvider';
 import { TsGoRenameProvider } from './features/RenameProvider';
 import { TsGoFindComponentReferencesProvider } from './features/FindComponentReferencesProvider';
 import { LSConfigManager } from '../../ls-config';
+import { TsGoInlayHintProvider } from './features/InlayHintProvider';
 
 export class TypeScriptGoPlugin implements Plugin {
     __name = 'typescript';
@@ -32,6 +38,7 @@ export class TypeScriptGoPlugin implements Plugin {
     private readonly findReferencesProvider: TsGoFindReferencesProvider;
     private readonly renameProvider: TsGoRenameProvider;
     private readonly findComponentReferencesProvider: TsGoFindComponentReferencesProvider;
+    private readonly inlayHintProvider: TsGoInlayHintProvider;
 
     constructor(lspService: TsApiService, lsConfigManager: LSConfigManager) {
         this.lspService = lspService;
@@ -45,6 +52,7 @@ export class TypeScriptGoPlugin implements Plugin {
             this.findComponentReferencesProvider
         );
         this.renameProvider = new TsGoRenameProvider(lspService);
+        this.inlayHintProvider = new TsGoInlayHintProvider(lspService);
     }
     getDiagnostics(document: Document): Resolvable<Diagnostic[]> {
         return this.diagnosticsProvider.getDiagnostics(document);
@@ -118,5 +126,13 @@ export class TypeScriptGoPlugin implements Plugin {
 
     async findComponentReferences(uri: string): Promise<Location[] | null> {
         return this.findComponentReferencesProvider.findComponentReferences(uri);
+    }
+
+    async getInlayHints(
+        document: Document,
+        range: Range,
+        cancellationToken?: CancellationToken
+    ): Promise<InlayHint[] | null> {
+        return this.inlayHintProvider.getInlayHints(document, range, cancellationToken);
     }
 }

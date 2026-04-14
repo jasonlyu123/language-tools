@@ -89,7 +89,7 @@ export class TsGoDefinitionsProvider implements DefinitionsProvider {
                 )
             );
         }
-    
+
         return result;
     }
 }

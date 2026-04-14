@@ -29,15 +29,12 @@ import { createGetCanonicalFileName, pathToUrl, urlToPath } from '../../utils';
 import { Resolvable } from '../interfaces';
 import { DocumentSnapshot, SvelteSnapshotOptions } from '../typescript/DocumentSnapshot';
 // import { toVirtualSvelteFilePath } from '../typescript/utils';
-import type {
-    API,
-    Snapshot,
-    Project
-} from '@typescript/api/async' with { 'resolution-mode': 'import' };
+import type { API, Project } from '@typescript/api/async' with { 'resolution-mode': 'import' };
 import { dirname } from 'node:path';
 import { internalHelpers } from 'svelte2tsx';
 import ts, { ScriptKind } from 'typescript';
 import { Logger } from '../../logger';
+import { tsAst } from './types';
 
 const toVirtualSvelteFilePath = (uri: string, kind: ScriptKind): string => {
     return uri /*+ (kind === ScriptKind.TS ? '.ts' : '.js')*/;
@@ -57,7 +54,7 @@ const toVirtualSvelteFilePath = (uri: string, kind: ScriptKind): string => {
 export interface TsApiServiceOptions {
     tsserverPath: string;
     lsConfigManager: LSConfigManager;
-    docManager?: DocumentManager;
+    docManager: DocumentManager;
     isSvelteCheck?: boolean;
     serverInitializationOptions: Partial<InitializeParams> & {
         workspaceFolders: WorkspaceFolder[];
@@ -75,67 +72,14 @@ export class TsApiService {
     private documentSnapshots: Map<string, DocumentSnapshot> = new Map();
     private readonly svelteTsPath: string;
 
-    private api: API | null = null;
+    private api: API<true> | null = null;
+    private tsAstModule: typeof tsAst | null = null;
 
     constructor(options: TsApiServiceOptions) {
         this.useCaseSensitiveFileNames =
             process.platform === 'win32' || !fs.existsSync(__filename.toUpperCase());
         this.getCanonicalFileName = createGetCanonicalFileName(this.useCaseSensitiveFileNames);
         this.options = options;
-        options.docManager?.on('documentOpen', async (document: Document) => {
-            const filePath = document.getFilePath();
-            if (!filePath) {
-                return;
-            }
-            const tsDoc = this.createDocumentSnapshot(filePath, document);
-
-            await this.sendNotification(DidOpenTextDocumentNotification.type, {
-                textDocument: {
-                    uri: toVirtualSvelteFilePath(document.uri, tsDoc.scriptKind),
-                    languageId: tsDoc.scriptKind === ScriptKind.TS ? 'typescript' : 'javascript',
-                    version: document.version,
-                    text: tsDoc.getFullText()
-                }
-            });
-        });
-
-        options.docManager?.on('documentChange', (document: Document) => {
-            const filePath = document.getFilePath();
-            if (document.version === 0 || !filePath) {
-                return;
-            }
-            const oldSnapshot = this.documentSnapshots.get(document.uri);
-            const tsDoc = this.createDocumentSnapshot(filePath, document);
-            this.sendNotification(DidChangeTextDocumentNotification.type, {
-                textDocument: {
-                    uri: toVirtualSvelteFilePath(document.uri, tsDoc.scriptKind),
-                    version: document.version
-                },
-                contentChanges: [
-                    oldSnapshot
-                        ? {
-                              text: tsDoc.getFullText(),
-                              range: {
-                                  start: { line: 0, character: 0 },
-                                  end: oldSnapshot.positionAt(oldSnapshot.getFullText().length)
-                              }
-                          }
-                        : { text: tsDoc.getFullText() }
-                ]
-            });
-        });
-
-        options.docManager?.on('documentClose', (document: Document) => {
-            const snapshot = this.documentSnapshots.get(document.uri);
-            if (!snapshot) {
-                return;
-            }
-            this.sendNotification(DidCloseTextDocumentNotification.type, {
-                textDocument: {
-                    uri: toVirtualSvelteFilePath(document.uri, snapshot.scriptKind)
-                }
-            });
-        });
 
         try {
             // For when svelte2tsx/svelte-check is part of node_modules, for example VS Code extension
@@ -175,6 +119,16 @@ export class TsApiService {
         return this.connection;
     }
 
+    async syncConfiguration() {
+        const lsConfigManager = this.options.lsConfigManager;
+        await this.sendNotification(DidChangeConfigurationNotification.type, {
+            settings: {
+                typescript: lsConfigManager.getClientTsUserConfig('typescript'),
+                javascript: lsConfigManager.getClientTsUserConfig('javascript')
+            }
+        });
+    }
+
     start(): Resolvable<void> {
         if (this.connection || this.initializePending) {
             throw new Error(
@@ -182,6 +136,65 @@ export class TsApiService {
             );
         }
         this.initializePending = this.initializeServerProcess();
+        const { docManager, lsConfigManager } = this.options;
+        docManager.on('documentOpen', async (document: Document) => {
+            const filePath = document.getFilePath();
+            if (!filePath) {
+                return;
+            }
+            const tsDoc = this.createDocumentSnapshot(filePath, document);
+
+            await this.sendNotification(DidOpenTextDocumentNotification.type, {
+                textDocument: {
+                    uri: toVirtualSvelteFilePath(document.uri, tsDoc.scriptKind),
+                    languageId: tsDoc.scriptKind === ScriptKind.TS ? 'typescript' : 'javascript',
+                    version: document.version,
+                    text: tsDoc.getFullText()
+                }
+            });
+        });
+
+        docManager.on('documentChange', (document: Document) => {
+            const filePath = document.getFilePath();
+            if (document.version === 0 || !filePath) {
+                return;
+            }
+            const oldSnapshot = this.documentSnapshots.get(document.uri);
+            const tsDoc = this.createDocumentSnapshot(filePath, document);
+            this.sendNotification(DidChangeTextDocumentNotification.type, {
+                textDocument: {
+                    uri: toVirtualSvelteFilePath(document.uri, tsDoc.scriptKind),
+                    version: document.version
+                },
+                contentChanges: [
+                    oldSnapshot
+                        ? {
+                              text: tsDoc.getFullText(),
+                              range: {
+                                  start: { line: 0, character: 0 },
+                                  end: oldSnapshot.positionAt(oldSnapshot.getFullText().length)
+                              }
+                          }
+                        : { text: tsDoc.getFullText() }
+                ]
+            });
+        });
+
+        docManager.on('documentClose', (document: Document) => {
+            const snapshot = this.documentSnapshots.get(document.uri);
+            if (!snapshot) {
+                return;
+            }
+            this.sendNotification(DidCloseTextDocumentNotification.type, {
+                textDocument: {
+                    uri: toVirtualSvelteFilePath(document.uri, snapshot.scriptKind)
+                }
+            });
+        });
+
+        lsConfigManager.onChange(() => {
+            this.syncConfiguration();
+        });
         return this.initializePending;
     }
 
@@ -199,27 +212,21 @@ export class TsApiService {
             );
         }
         this.serverProcess.on('error', (err) => {
-            console.error(`[ts go]: ${err.message}`);
+            Logger.error(
+                err,
+                `Failed to start TypeScript Go server process at ${options.tsserverPath}`
+            );
         });
         this.serverProcess.on('exit', (code, signal) => {
             if (code !== 0) {
-                console.error(
+                Logger.error(
                     `TypeScript Go server process exited with code ${code} and signal ${signal}`
                 );
             }
         });
-        this.serverProcess.stderr?.on('data', (data) => {
-            console.error(`[ts go]: ${data.toString()}`);
-        });
         const connection = createProtocolConnection(
             new StreamMessageReader(this.serverProcess.stdout),
-            new StreamMessageWriter(this.serverProcess.stdin),
-            {
-                error: console.error,
-                warn: console.warn,
-                info: console.info,
-                log: console.log
-            }
+            new StreamMessageWriter(this.serverProcess.stdin)
         );
         this.connection = connection;
 
@@ -269,10 +276,10 @@ export class TsApiService {
                     Logger.log(`[ts go] [warn]: ${params.message}`);
                     break;
                 case MessageType.Info:
-                    Logger.log(`[ts go] [info]: ${params.message}`);
+                    Logger.debug(`[ts go] [info]: ${params.message}`);
                     break;
                 case MessageType.Log:
-                    Logger.log(`[ts go]: ${params.message}`);
+                    Logger.debug(`[ts go] [log]: ${params.message}`);
                     break;
                 case MessageType.Debug:
                     Logger.debug(`[ts go] [debug]: ${params.message}`);
@@ -316,15 +323,10 @@ export class TsApiService {
         return connection
             .sendRequest(InitializeRequest.type, initializeParams)
             .then(async (result: InitializeResult) => {
-                console.log('TypeScript Go server initialized successfully');
-                console.log('Server capabilities:', result.capabilities);
+                Logger.debug('TypeScript Go server initialized successfully');
+                Logger.debug('Server capabilities:', result.capabilities);
                 await connection.sendNotification(InitializedNotification.type, {});
-                await connection.sendNotification(DidChangeConfigurationNotification.type, {
-                    settings: {
-                        typescript: options.lsConfigManager.getClientTsUserConfig('typescript'),
-                        javascript: options.lsConfigManager.getClientTsUserConfig('javascript')
-                    }
-                });
+                this.syncConfiguration();
                 const apiModule = await apiModulePromise;
                 const apiInfo = await connection.sendRequest<{ pipe: string }>(
                     'custom/initializeAPISession',
@@ -374,6 +376,13 @@ export class TsApiService {
         }
     }
 
+    async importAstApi() {
+        if (!this.tsAstModule) {
+            this.tsAstModule = await import('@typescript/ast');
+        }
+        return this.tsAstModule;
+    }
+
     private createDocumentSnapshot(filePath: string, document: Document): DocumentSnapshot {
         const result = DocumentSnapshot.fromDocument(
             document,
@@ -394,6 +403,19 @@ export class TsApiService {
             console.error(`No TypeScript document snapshot found for ${uri}`);
             return undefined;
         }
+
         return result;
+    }
+
+    dispose() {
+        if (this.connection) {
+            this.connection.dispose();
+            this.connection = null;
+        }
+        if (this.serverProcess) {
+            this.serverProcess.kill();
+            this.serverProcess = null;
+        }
+        this.documentSnapshots.clear();
     }
 }

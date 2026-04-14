@@ -230,7 +230,9 @@ export function startServer(options?: LSOptions) {
                         workspaceFolders: evt.workspaceFolders ?? [],
                         locale: evt.locale
                     },
-                    registerFileWatcher: (watchOptions: DidChangeWatchedFilesRegistrationOptions) => {
+                    registerFileWatcher: (
+                        watchOptions: DidChangeWatchedFilesRegistrationOptions
+                    ) => {
                         connection?.client.register(
                             DidChangeWatchedFilesNotification.type,
                             watchOptions

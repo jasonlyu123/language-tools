@@ -212,7 +212,10 @@ export function activateSvelteLanguageServer(context: ExtensionContext) {
 
     context.subscriptions.push(
         workspace.onDidChangeConfiguration((event) => {
-            if (event.affectsConfiguration('typescript.experimental.useTsgo')) {
+            if (
+                event.affectsConfiguration('typescript.experimental.useTsgo') ||
+                event.affectsConfiguration('js/ts.experimental.useTsgo')
+            ) {
                 ls.clientOptions.initializationOptions.experimental.typescriptGo =
                     createTypeScriptGoInfo();
                 ls.restart();

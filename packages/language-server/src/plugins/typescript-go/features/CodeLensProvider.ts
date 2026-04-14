@@ -16,9 +16,7 @@ import {
 import { TsApiService } from '../lspService';
 import { CodeLensProvider } from '../../interfaces';
 import { hasNonNegativeRange } from './utils';
-import {
-    offsetOfGeneratedComponentExport,
-} from '../../typescript/utils';
+import { offsetOfGeneratedComponentExport } from '../../typescript/utils';
 import { SvelteDocumentSnapshot } from '../../typescript/DocumentSnapshot';
 import { LSConfigManager } from '../../../ls-config';
 
@@ -87,7 +85,7 @@ export class TsGoCodeLensProvider implements CodeLensProvider {
         if (!tsDoc || !codeLensToResolve.data?.kind) {
             return codeLensToResolve;
         }
-            
+
         const res = await this.tsApiService.sendRequest(
             CodeLensResolveRequest.type,
             {
@@ -142,6 +140,6 @@ export class TsGoCodeLensProvider implements CodeLensProvider {
         return {
             start: pos,
             end: pos
-        }
+        };
     }
 }

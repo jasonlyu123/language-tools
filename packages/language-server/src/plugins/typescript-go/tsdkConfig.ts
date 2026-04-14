@@ -1,7 +1,7 @@
 import path from 'path';
 import fs from 'fs';
 import { WorkspaceFolder } from 'vscode-languageserver-types';
-import { urlToPath } from '../../utils';
+import { urlToPath, pathToUrl } from '../../utils';
 
 export async function resolveTsGoServerPath(
     config: { 'native-preview': { tsdk: string } },
@@ -14,8 +14,9 @@ export async function resolveTsGoServerPath(
         if (exe.endsWith('/@typescript/native-preview')) {
             try {
                 const packagePath = workspaceResolve(exe, workspaceFolders);
-                const getExePath = (await import(path.join(packagePath, 'lib', 'getExePath.js')))
-                    .default;
+                const getExePath = (
+                    await import(pathToUrl(path.join(packagePath, 'lib', 'getExePath.js')))
+                ).default;
                 return getExePath();
             } catch {}
         }
@@ -35,8 +36,7 @@ function workspaceResolve(relativePath: string, workspaceFolders: WorkspaceFolde
     if (workspaceFolders && workspaceFolders.length > 0) {
         for (const folder of workspaceFolders) {
             const fsPath = urlToPath(folder.uri);
-            if (fsPath == null)
-                continue;
+            if (fsPath == null) continue;
             return path.join(fsPath, relativePath);
         }
     }

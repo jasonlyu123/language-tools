@@ -429,7 +429,8 @@ async function createLanguageService(
         parse: svelteCompiler?.parse,
         version: svelteCompiler?.VERSION,
         transformOnTemplateError: docContext.transformOnTemplateError,
-        typingsNamespace: raw?.svelteOptions?.namespace || 'svelteHTML'
+        typingsNamespace: raw?.svelteOptions?.namespace || 'svelteHTML',
+        shimPaths: Array.from(svelteTsxFilesToOriginalCasing.values())
     };
 
     const project = initLsCacheProject();
@@ -713,7 +714,7 @@ async function createLanguageService(
                 // the correct casing
                 ...clientFiles.filter(
                     (file) => !canonicalProjectFileNames.has(getCanonicalFileName(file))
-                ),
+                )
                 // Use original casing here, too: people could have their VS Code extensions in a case insensitive
                 // folder but their project in a case sensitive one; and if we copy the shims into the case sensitive
                 // part it would break when canonicalizing it.

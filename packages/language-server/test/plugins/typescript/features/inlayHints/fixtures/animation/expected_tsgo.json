@@ -1,0 +1,27 @@
+[
+    {
+        "label": [
+            { "value": ": " },
+            { "value": "{" },
+            { "value": " " },
+            {
+                "value": "id",
+                "location": {
+                    "uri": "<workspaceUri>/animation/input.svelte",
+                    "range": {
+                        "start": { "line": 3, "character": 19 },
+                        "end": { "line": 3, "character": 21 }
+                    }
+                }
+            },
+            { "value": ": " },
+            { "value": "number" },
+            { "value": " " },
+            { "value": "}" },
+            { "value": "[]" }
+        ],
+        "position": { "line": 3, "character": 13 },
+        "kind": 1,
+        "paddingLeft": true
+    }
+]

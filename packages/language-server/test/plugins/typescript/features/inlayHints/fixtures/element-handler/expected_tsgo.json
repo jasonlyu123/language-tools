@@ -5,37 +5,46 @@
             {
                 "value": "MouseEvent",
                 "location": {
+                    "uri": "<typescript_lib>/lib.dom.d.ts",
                     "range": {
                         "start": { "line": -1, "character": -1 },
                         "end": { "line": -1, "character": -1 }
-                    },
-                    "uri": "<typescript_lib>/lib.dom.d.ts"
+                    }
                 }
             },
             { "value": " & " },
             { "value": "{" },
             { "value": " " },
-            { "value": "currentTarget" },
+            {
+                "value": "currentTarget",
+                "location": {
+                    "uri": "<node_modules>/svelte/elements.d.ts",
+                    "range": {
+                        "start": { "line": 42, "character": 14 },
+                        "end": { "line": 42, "character": 27 }
+                    }
+                }
+            },
             { "value": ": " },
             {
                 "value": "EventTarget",
                 "location": {
+                    "uri": "<typescript_lib>/lib.dom.d.ts",
                     "range": {
                         "start": { "line": -1, "character": -1 },
                         "end": { "line": -1, "character": -1 }
-                    },
-                    "uri": "<typescript_lib>/lib.dom.d.ts"
+                    }
                 }
             },
             { "value": " & " },
             {
                 "value": "HTMLButtonElement",
                 "location": {
+                    "uri": "<typescript_lib>/lib.dom.d.ts",
                     "range": {
                         "start": { "line": -1, "character": -1 },
                         "end": { "line": -1, "character": -1 }
-                    },
-                    "uri": "<typescript_lib>/lib.dom.d.ts"
+                    }
                 }
             },
             { "value": " " },
@@ -50,11 +59,11 @@
             {
                 "value": "message",
                 "location": {
+                    "uri": "<workspaceUri>/element-handler/input.svelte",
                     "range": {
                         "start": { "line": 1, "character": 17 },
                         "end": { "line": 1, "character": 24 }
-                    },
-                    "uri": "<workspaceUri>/element-handler/input.svelte"
+                    }
                 }
             },
             { "value": ":" }

@@ -257,7 +257,7 @@ function preprocessSvelteFile(document: Document, options: SvelteSnapshotOptions
                     : document.config?.compilerOptions?.customElement),
             emitJsDoc: options.emitJsDoc,
             rewriteExternalImports: options.rewriteExternalImports,
-            shimPaths: options.shimPaths,
+            shimPaths: options.shimPaths
         });
         text = tsx.code;
         tsxMap = tsx.map as EncodedSourceMap;

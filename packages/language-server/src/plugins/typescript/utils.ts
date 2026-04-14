@@ -9,7 +9,13 @@ import {
     SymbolKind,
     Location
 } from 'vscode-languageserver';
-import { Document, isInTag, mapLocationToOriginal, mapRangeToOriginal, mapUnmappedToTheStartOfFile } from '../../lib/documents';
+import {
+    Document,
+    isInTag,
+    mapLocationToOriginal,
+    mapRangeToOriginal,
+    mapUnmappedToTheStartOfFile
+} from '../../lib/documents';
 import { GetCanonicalFileName, pathToUrl } from '../../utils';
 import { DocumentSnapshot, SvelteDocumentSnapshot } from './DocumentSnapshot';
 

@@ -1,24 +1,44 @@
 import * as assert from 'assert';
-import { readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import ts from 'typescript';
+import { InlayHint } from 'vscode-languageserver-types';
 import { Document, DocumentManager } from '../../../../../src/lib/documents';
 import { LSConfigManager, TsInlayHintsConfig } from '../../../../../src/ls-config';
-import { LSAndTSDocResolver } from '../../../../../src/plugins';
+import { InlayHintProvider, LSAndTSDocResolver } from '../../../../../src/plugins';
+import { TsGoInlayHintProvider } from '../../../../../src/plugins/typescript-go/features/InlayHintProvider';
 import { InlayHintProviderImpl } from '../../../../../src/plugins/typescript/features/InlayHintProvider';
 import { pathToUrl } from '../../../../../src/utils';
+import {
+    createSnapshotTesterForTsGo,
+    TsGoServiceSetupResult
+} from '../../../typescript-go/test-utils';
 import {
     createJsonSnapshotFormatter,
     createSnapshotTester,
     updateSnapshotIfFailedOrEmpty
 } from '../../test-utils';
-import { InlayHint } from 'vscode-languageserver-types';
 
 function setup(workspaceDir: string, filePath: string) {
     const docManager = new DocumentManager((textDocument) =>
         Document.createForTest(textDocument.uri, textDocument.text)
     );
     const configManager = new LSConfigManager();
+    setupConfigManager(configManager);
+    const lsAndTsDocResolver = new LSAndTSDocResolver(
+        docManager,
+        [pathToUrl(workspaceDir)],
+        configManager
+    );
+    const plugin = new InlayHintProviderImpl(lsAndTsDocResolver);
+    const document = docManager.openClientDocument(<any>{
+        uri: pathToUrl(filePath),
+        text: ts.sys.readFile(filePath) || ''
+    });
+    return { plugin, document, docManager };
+}
+
+function setupConfigManager(configManager: LSConfigManager) {
     const allEnable: TsInlayHintsConfig = {
         enumMemberValues: { enabled: true },
         functionLikeReturnTypes: { enabled: true },
@@ -35,31 +55,31 @@ function setup(workspaceDir: string, filePath: string) {
             inlayHints: allEnable
         }
     });
-    const lsAndTsDocResolver = new LSAndTSDocResolver(
-        docManager,
-        [pathToUrl(workspaceDir)],
-        configManager
-    );
-    const plugin = new InlayHintProviderImpl(lsAndTsDocResolver);
-    const document = docManager.openClientDocument(<any>{
+}
+
+function setupForTsGo(filePath: string, services: TsGoServiceSetupResult) {
+    const plugin = new TsGoInlayHintProvider(services.service);
+    setupConfigManager(services.lsConfigManager);
+    const document = services.docManager.openClientDocument(<any>{
         uri: pathToUrl(filePath),
         text: ts.sys.readFile(filePath) || ''
     });
-    return { plugin, document, docManager, lsAndTsDocResolver };
+    return { plugin, document, docManager: services.docManager };
 }
 
-async function executeTest(
-    inputFile: string,
-    {
-        workspaceDir,
-        dir
-    }: {
-        workspaceDir: string;
-        dir: string;
-    }
-) {
-    const expected = 'expectedv2.json';
-    const { plugin, document } = setup(workspaceDir, inputFile);
+async function executeTest({
+    plugin,
+    document,
+    workspaceDir,
+    dir,
+    expected
+}: {
+    workspaceDir: string;
+    dir: string;
+    plugin: InlayHintProvider;
+    document: Document;
+    expected: string;
+}) {
     const workspaceUri = pathToUrl(workspaceDir);
     const inlayHints = sanitizeUri(
         await plugin.getInlayHints(document, {
@@ -91,7 +111,7 @@ async function executeTest(
 
     function sanitizeUri(inlayHints: InlayHint[] | null) {
         if (!inlayHints) {
-            return;
+            return null;
         }
 
         for (const inlayHint of inlayHints) {
@@ -101,6 +121,16 @@ async function executeTest(
 
             for (const label of inlayHint.label) {
                 if (label.location) {
+                    if (
+                        label.location.uri.endsWith('lib.dom.d.ts') &&
+                        label.location.range.start.line > 0
+                    ) {
+                        label.location.uri = '<typescript_lib>/lib.dom.d.ts';
+                        label.location.range = {
+                            start: { line: -1, character: -1 },
+                            end: { line: -1, character: -1 }
+                        };
+                    }
                     label.location.uri = label.location.uri.replace(workspaceUri, '<workspaceUri>');
 
                     const indexOfNodeModules = label.location.uri.lastIndexOf('node_modules');
@@ -151,10 +181,41 @@ async function executeTest(
     }
 }
 
-const executeTests = createSnapshotTester(executeTest);
+const executeTs6Tests = createSnapshotTester(async (inputFile, testOptions) => {
+    const { plugin, document } = setup(testOptions.workspaceDir, inputFile);
+    await executeTest({
+        plugin,
+        document,
+        workspaceDir: testOptions.workspaceDir,
+        dir: testOptions.dir,
+        expected: 'expectedv2.json'
+    });
+});
+const executeTsGoTests = createSnapshotTesterForTsGo(async (inputFile, testOptions, services) => {
+    const { plugin, document } = setupForTsGo(inputFile, services);
+    // ensure configuration is synced before running
+    await services.service.syncConfiguration();
+    await executeTest({
+        plugin,
+        document,
+        workspaceDir: testOptions.workspaceDir,
+        dir: testOptions.dir,
+        expected: existsSync(join(testOptions.dir, 'expected_tsgo.json'))
+            ? 'expected_tsgo.json'
+            : 'expectedv2.json'
+    });
+});
 
 describe('InlayHintProvider', function () {
-    executeTests({
+    executeTs6Tests({
+        dir: join(__dirname, 'fixtures'),
+        workspaceDir: join(__dirname, 'fixtures'),
+        context: this
+    });
+});
+
+describe.only('InlayHintProvider (TS Go)', function () {
+    executeTsGoTests({
         dir: join(__dirname, 'fixtures'),
         workspaceDir: join(__dirname, 'fixtures'),
         context: this

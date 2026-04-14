@@ -36,6 +36,9 @@ importers:
       '@typescript/api':
         specifier: link:../../../typescript-go/_packages/api
         version: link:../../../typescript-go/_packages/api
+      '@typescript/ast':
+        specifier: link:../../../typescript-go/_packages/ast
+        version: link:../../../typescript-go/_packages/ast
       '@vscode/emmet-helper':
         specifier: 2.8.4
         version: 2.8.4
@@ -109,6 +112,9 @@ importers:
       '@types/sinon':
         specifier: ^7.5.2
         version: 7.5.2
+      '@typescript/native-preview':
+        specifier: 7.0.0-dev.20260410.1
+        version: 7.0.0-dev.20260410.1
       cross-env:
         specifier: ^7.0.2
         version: 7.0.3
@@ -889,6 +895,45 @@ packages:
 
   '@types/vscode@1.78.0':
     resolution: {integrity: sha512-LJZIJpPvKJ0HVQDqfOy6W4sNKUBBwyDu1Bs8chHBZOe9MNuKTJtidgZ2bqjhmmWpUb0TIIqv47BFUcVmAsgaVA==}
+
+  '@typescript/native-preview-darwin-arm64@7.0.0-dev.20260410.1':
+    resolution: {integrity: sha512-bpLYm6woXd8BECzV9AQvPqISVeohpekK1qwpRopvNIxydhRQ4fEjZsS7EtDYpqHAW4/u1uEv07P9/iS6TAL1fQ==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@typescript/native-preview-darwin-x64@7.0.0-dev.20260410.1':
+    resolution: {integrity: sha512-V8bW8g5hgu+bAwGvTqF1kilkkoDgxhxi5egrdMUeWQkR+MIisoBQeaAupqMpLoSkqZsc/kKucM0zwBNC/KRU3Q==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@typescript/native-preview-linux-arm64@7.0.0-dev.20260410.1':
+    resolution: {integrity: sha512-MOluRRAhv46s9ScFmePa0InMHmpZ/z0Evc11RrTKsg+bN8BR7sWoAtFq6IujEDK9WVP7YmEYtBRgEfMLuqVojw==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@typescript/native-preview-linux-arm@7.0.0-dev.20260410.1':
+    resolution: {integrity: sha512-NO6Ci65ADadOCr2ycTxOyCgC5kyk+Ryjl8k5c78mz9sKDxYqwEtryFFjLqitAG+rejtJbnUq897WRICjAOwslA==}
+    cpu: [arm]
+    os: [linux]
+
+  '@typescript/native-preview-linux-x64@7.0.0-dev.20260410.1':
+    resolution: {integrity: sha512-IofIUrMGjXmZKDEMaRgshzOne0EQZtx9vE/6URHfgmDnWLDKWzz9eQ2qWmvsFD2vOBbgc6GwVWEq6XTHMEfx2A==}
+    cpu: [x64]
+    os: [linux]
+
+  '@typescript/native-preview-win32-arm64@7.0.0-dev.20260410.1':
+    resolution: {integrity: sha512-TXmE+wovQqRo+qAhaewB0MPB9esgayvSHr6vFlCpHykHqbDl3FUucuC4F8yU6zVOA3UqXTk4/GHeLsAvU7YEgQ==}
+    cpu: [arm64]
+    os: [win32]
+
+  '@typescript/native-preview-win32-x64@7.0.0-dev.20260410.1':
+    resolution: {integrity: sha512-dMFT4tdHBe2vVA2WPQMjorT+fzCURRtillevQzz8/bwCEz2uXSnpu4oLRLS5045ppGE0wCFELE+Hq5z2oRddDw==}
+    cpu: [x64]
+    os: [win32]
+
+  '@typescript/native-preview@7.0.0-dev.20260410.1':
+    resolution: {integrity: sha512-K3TIwBw4XGQM33wW8KUqRU7r6ZY1IqB8chk1u1kT+CDj4iu+eQ6jCXgU7EDxmpJ++gbNcIf8iBYgWgYNssrhZQ==}
+    hasBin: true
 
   '@ungap/promise-all-settled@1.1.2':
     resolution: {integrity: sha512-sL/cEvJWAnClXw0wHk85/2L0G6Sj8UB0Ctc1TEMbKSsmpRosqhwj9gWgFRZSrBr2f9tiXISwNhCPmlfqUqyb9Q==}
@@ -2707,6 +2752,37 @@ snapshots:
       '@types/vfile-message': 2.0.0
 
   '@types/vscode@1.78.0': {}
+
+  '@typescript/native-preview-darwin-arm64@7.0.0-dev.20260410.1':
+    optional: true
+
+  '@typescript/native-preview-darwin-x64@7.0.0-dev.20260410.1':
+    optional: true
+
+  '@typescript/native-preview-linux-arm64@7.0.0-dev.20260410.1':
+    optional: true
+
+  '@typescript/native-preview-linux-arm@7.0.0-dev.20260410.1':
+    optional: true
+
+  '@typescript/native-preview-linux-x64@7.0.0-dev.20260410.1':
+    optional: true
+
+  '@typescript/native-preview-win32-arm64@7.0.0-dev.20260410.1':
+    optional: true
+
+  '@typescript/native-preview-win32-x64@7.0.0-dev.20260410.1':
+    optional: true
+
+  '@typescript/native-preview@7.0.0-dev.20260410.1':
+    optionalDependencies:
+      '@typescript/native-preview-darwin-arm64': 7.0.0-dev.20260410.1
+      '@typescript/native-preview-darwin-x64': 7.0.0-dev.20260410.1
+      '@typescript/native-preview-linux-arm': 7.0.0-dev.20260410.1
+      '@typescript/native-preview-linux-arm64': 7.0.0-dev.20260410.1
+      '@typescript/native-preview-linux-x64': 7.0.0-dev.20260410.1
+      '@typescript/native-preview-win32-arm64': 7.0.0-dev.20260410.1
+      '@typescript/native-preview-win32-x64': 7.0.0-dev.20260410.1
 
   '@ungap/promise-all-settled@1.1.2': {}
 

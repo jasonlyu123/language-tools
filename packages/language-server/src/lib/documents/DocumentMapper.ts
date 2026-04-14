@@ -411,7 +411,6 @@ export function mapSelectionRangeToParent(
     );
 }
 
-
 /**Some definition like the svelte component class definition don't exist in the original, so we map to 0,1*/
 export function mapUnmappedToTheStartOfFile(range: Range) {
     if (range.start.line < 0) {

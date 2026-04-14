@@ -196,6 +196,7 @@ export function createSnapshotTester<
 >(executeTest: (inputFile: string, testOptions: TestOptions) => Promise<void>) {
     return (testOptions: TestOptions) => {
         serviceWarmup(testOptions.context, testOptions.dir, pathToUrl(testOptions.workspaceDir));
+
         executeTests(testOptions);
     };
 
@@ -204,6 +205,7 @@ export function createSnapshotTester<
         const workspaceUri = pathToUrl(testOptions.workspaceDir);
 
         const inputFile = join(dir, 'input.svelte');
+
         const tsconfig = join(dir, 'tsconfig.json');
         const jsconfig = join(dir, 'jsconfig.json');
 
