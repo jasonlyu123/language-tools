@@ -36,7 +36,7 @@ describe('DocumentHighlightProvider', function () {
     }
 });
 
-describe.only('DocumentHighlightProvider (TS GO)', function () {
+describe('DocumentHighlightProvider (TS GO)', function () {
     const getServices = setupSharedServices(highlightTestDir);
 
     test(setupServices);

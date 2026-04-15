@@ -26,7 +26,7 @@ import { StreamMessageReader, StreamMessageWriter } from 'vscode-languageserver-
 import { getPackageInfo, importSvelte } from '../../importPackage';
 import { Document, DocumentManager } from '../../lib/documents';
 import { LSConfigManager } from '../../ls-config';
-import { createGetCanonicalFileName, pathToUrl, urlToPath } from '../../utils';
+import { pathToUrl, urlToPath } from '../../utils';
 import { Resolvable } from '../interfaces';
 import {
     DocumentSnapshot,
@@ -34,12 +34,12 @@ import {
     SvelteSnapshotOptions
 } from '../typescript/DocumentSnapshot';
 // import { toVirtualSvelteFilePath } from '../typescript/utils';
-import type { API, Project } from '@typescript/api/async' with { 'resolution-mode': 'import' };
 import { dirname } from 'node:path';
 import { internalHelpers } from 'svelte2tsx';
 import ts, { ScriptKind } from 'typescript';
 import { Logger } from '../../logger';
-import { tsAst } from './types';
+import { tsAst, tsApi } from './types';
+import { FileMap } from '../../lib/documents/fileCollection';
 
 const toVirtualSvelteFilePath = (uri: string, kind: ScriptKind): string => {
     return uri /*+ (kind === ScriptKind.TS ? '.ts' : '.js')*/;
@@ -68,22 +68,24 @@ export interface TsApiServiceOptions {
 }
 
 export class TsApiService {
-    private readonly getCanonicalFileName: (fileName: string) => string;
     private readonly useCaseSensitiveFileNames: boolean;
     private readonly options: TsApiServiceOptions;
     private serverProcess: ChildProcess | null = null;
     private connection: ProtocolConnection | null = null;
     private initializePending: Promise<void> | null = null;
-    private documentSnapshots: Map<string, DocumentSnapshot> = new Map();
+    private readonly documentSnapshots: FileMap<DocumentSnapshot>;
     private readonly svelteTsPath: string;
 
-    private api: API<true> | null = null;
+    private api: tsApi.API<true> | null = null;
     private tsAstModule: typeof tsAst | null = null;
 
     constructor(options: TsApiServiceOptions) {
+        // In mac, you can have both case-sensitive and case-insensitive file systems in different directories
+        // use tsserver path so that it is more likely to be consistent with what tsserver uses.
         this.useCaseSensitiveFileNames =
-            process.platform === 'win32' || !fs.existsSync(__filename.toUpperCase());
-        this.getCanonicalFileName = createGetCanonicalFileName(this.useCaseSensitiveFileNames);
+            process.platform === 'win32' || !fs.existsSync(options.tsserverPath.toUpperCase());
+
+        this.documentSnapshots = new FileMap(this.useCaseSensitiveFileNames);
         this.options = options;
 
         try {
@@ -280,14 +282,7 @@ export class TsApiService {
                     : undefined
             },
             initializationOptions: {
-                codeLensShowLocationsCommandName: 'editor.action.showReferences',
-                extraFileExtensions: [
-                    {
-                        extension: 'svelte',
-                        isMixedContent: true,
-                        scriptKind: ts.ScriptKind.Deferred
-                    }
-                ]
+                codeLensShowLocationsCommandName: 'editor.action.showReferences'
             }
         };
         connection.onNotification(LogMessageNotification.type, (params) => {
@@ -310,7 +305,6 @@ export class TsApiService {
             }
         });
         connection.onRequest(RegistrationRequest.type, (params) => {
-            // console.log('Received registration request:', JSON.stringify(params));
             for (const registration of params.registrations) {
                 if (registration.method === DidChangeWatchedFilesNotification.type.method) {
                     options.registerFileWatcher?.(registration.registerOptions);
@@ -321,27 +315,6 @@ export class TsApiService {
         });
 
         const apiModulePromise = import('@typescript/api/async');
-
-        connection.onRequest(
-            '$/extensibility/language/loadFile',
-            async (params: { uri: string }) => {
-                const filePath = urlToPath(params.uri);
-                if (!filePath || !ts.sys.fileExists(filePath)) {
-                    return null;
-                }
-                const result = DocumentSnapshot.fromFilePath(
-                    filePath,
-                    (filePath, text) => new Document(pathToUrl(filePath), text),
-                    this.loadSvelte2tsxOptions(filePath),
-                    ts.sys
-                );
-                this.documentSnapshots.set(params.uri, result);
-                return {
-                    content: result.getFullText(),
-                    scriptKind: result.scriptKind
-                };
-            }
-        );
         connection.listen();
         return connection
             .sendRequest(InitializeRequest.type, initializeParams)
@@ -383,7 +356,7 @@ export class TsApiService {
         };
     }
 
-    async getApiProject(filePath: string): Promise<Project | undefined> {
+    async getApiProject(filePath: string): Promise<tsApi.Project | undefined> {
         if (!this.api) {
             await this.initializePending;
             if (!this.api) {
