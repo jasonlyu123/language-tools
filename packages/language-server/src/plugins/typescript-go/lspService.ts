@@ -272,14 +272,10 @@ export class TsApiService {
                     didChangeWatchedFiles: clientCapabilities?.workspace?.didChangeWatchedFiles
                     // configuration: clientCapabilities?.workspace?.configuration,
                 },
-                general: clientCapabilities?.general
-                    ? {
-                          ...clientCapabilities.general,
-                          // we only support javascript's position encoding, don't use the client's capabilities
-                          // utf-16 support is mandatory for the client because of backwards compatibility anyway.
-                          positionEncodings: [PositionEncodingKind.UTF16]
-                      }
-                    : undefined
+
+                // Don't sync with client's position encoding capabilities
+                // we only support javascript's position encoding, don't use the client's capabilities
+                // utf-16 support is mandatory for the client because of backwards compatibility anyway.
             },
             initializationOptions: {
                 codeLensShowLocationsCommandName: 'editor.action.showReferences'
