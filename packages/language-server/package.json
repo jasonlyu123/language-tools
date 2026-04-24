@@ -45,7 +45,7 @@
         "@types/mocha": "^9.1.0",
         "@types/node": "^18.0.0",
         "@types/sinon": "^7.5.2",
-        "@typescript/native-preview": "7.0.0-dev.20260410.1",
+        "@typescript/native-preview": "7.0.0-dev.20260423.1",
         "cross-env": "^7.0.2",
         "mocha": "^9.2.0",
         "sinon": "^11.0.0",
@@ -53,8 +53,6 @@
     },
     "dependencies": {
         "@jridgewell/trace-mapping": "^0.3.25",
-        "@typescript/api": "link:../../../typescript-go/_packages/api",
-        "@typescript/ast": "link:../../../typescript-go/_packages/ast",
         "@vscode/emmet-helper": "2.8.4",
         "chokidar": "^4.0.1",
         "estree-walker": "^2.0.1",
@@ -73,5 +71,8 @@
         "vscode-languageserver-protocol": "3.17.5",
         "vscode-languageserver-types": "3.17.5",
         "vscode-uri": "~3.1.0"
+    },
+    "peerDependencies": {        
+        "@typescript/native-preview": "7.0.0-dev.20260423.1"
     }
 }

@@ -1,4 +1,4 @@
-import type tsAst from '@typescript/ast' with { 'resolution-mode': 'import' };
-import type tsApi from '@typescript/api/async' with { 'resolution-mode': 'import' };
+import type tsAst from '@typescript/native-preview/ast' with { 'resolution-mode': 'import' };
+import type tsApi from '@typescript/native-preview/async' with { 'resolution-mode': 'import' };
 
 export { tsAst, tsApi };

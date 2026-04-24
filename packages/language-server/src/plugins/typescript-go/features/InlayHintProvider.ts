@@ -340,7 +340,10 @@ export class TsGoInlayHintProvider implements InlayHintProvider {
             | tsAst.GetAccessorDeclaration
     ) {
         // the type said parameters is always defined but it can be undefined
-        const scanStart = decl.parameters?.end ?? decl.name?.end ?? decl.pos;
+        const scanStart =
+            decl.parameters?.end ??
+            (!context.tsAstModule.isArrowFunction(decl) ? decl.name?.end : null) ??
+            decl.pos;
         if (!context.scanner) {
             context.scanner = getScannerForSourceFile(
                 context.tsAstModule,

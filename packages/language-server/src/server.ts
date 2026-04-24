@@ -64,6 +64,7 @@ import { TypeScriptGoPlugin } from './plugins/typescript-go/TypeScriptGoPlugin';
 import { TsApiService } from './plugins/typescript-go/lspService';
 import { resolveTsGoServerPath as resolveTsdkConfig } from './plugins/typescript-go/tsdkConfig';
 import { FileSystemProvider } from './lib/FileSystemProvider';
+import ts from 'typescript';
 
 namespace TagCloseRequest {
     export const type: RequestType<TextDocumentPositionParams, string | null, any> =
@@ -253,6 +254,9 @@ export function startServer(options?: LSOptions) {
         }
 
         if (!useTsGoServer) {
+            if (evt.locale) {
+                ts.validateLocaleAndSetLanguage(evt.locale, ts.sys);
+            }
             pluginHost.register(
                 new TypeScriptPlugin(
                     configManager,

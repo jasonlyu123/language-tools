@@ -65,7 +65,7 @@ const isRenderFunction = nodeAndParentsSatisfyRespectivePredicates<
 >(
     (tsAstModule, node) =>
         tsAstModule.isFunctionDeclaration(node) && node?.name?.text === internalHelpers.renderName,
-    (tsAstModule, node) => tsAstModule.isSourceFile(node)
+    (tsAstModule, node): node is tsAst.SourceFile => node.kind === tsAstModule.SyntaxKind.SourceFile
 );
 
 // const isRenderFunctionBody = nodeAndParentsSatisfyRespectivePredicates(

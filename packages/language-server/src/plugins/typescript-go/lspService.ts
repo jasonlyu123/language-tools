@@ -314,7 +314,7 @@ export class TsApiService {
             return;
         });
 
-        const apiModulePromise = import('@typescript/api/async');
+        const apiModulePromise = import('@typescript/native-preview/async');
         connection.listen();
         return connection
             .sendRequest(InitializeRequest.type, initializeParams)
@@ -374,7 +374,7 @@ export class TsApiService {
 
     async importAstApi() {
         if (!this.tsAstModule) {
-            this.tsAstModule = await import('@typescript/ast');
+            this.tsAstModule = await import('@typescript/native-preview/ast');
         }
         return this.tsAstModule;
     }
