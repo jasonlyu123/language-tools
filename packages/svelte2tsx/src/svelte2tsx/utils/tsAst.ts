@@ -253,7 +253,7 @@ export function moveNode(
 /**
  * adopted from https://github.com/microsoft/TypeScript/blob/6e0447fdf165b1cec9fc80802abcc15bd23a268f/src/services/organizeImports.ts#L111
  */
-function isNewGroup(sourceFile: ts.SourceFile, topLevelImportDecl: ts.Node, scanner: ts.Scanner) {
+export function isNewGroup(sourceFile: ts.SourceFile, topLevelImportDecl: ts.Node, scanner: ts.Scanner) {
     const startPos = topLevelImportDecl.getFullStart();
     const endPos = topLevelImportDecl.getStart();
     scanner.setText(sourceFile.text, startPos, endPos - startPos);

@@ -13,7 +13,7 @@ import { is$$SlotsDeclaration } from './nodes/slot';
 import { preprendStr } from '../utils/magic-string';
 import {
     handleFirstInstanceImport,
-    handleImportDeclaration
+    // handleImportDeclaration
 } from './nodes/handleImportDeclaration';
 import { InterfacesAndTypes } from './nodes/InterfacesAndTypes';
 import { ModuleAst } from './processModuleScriptTag';
@@ -257,7 +257,7 @@ export function processInstanceScriptContent(
         }
 
         if (ts.isImportDeclaration(node)) {
-            handleImportDeclaration(node, str, astOffset, script.start, tsAst);
+            // handleImportDeclaration(node, str, astOffset, script.start, tsAst);
 
             // Check if import is the event dispatcher
             events.checkIfImportIsEventDispatcher(node);
@@ -371,7 +371,7 @@ export function processInstanceScriptContent(
     implicitTopLevelNames.modifyCode(rootScope.declared);
     implicitStoreValues.modifyCode(astOffset, str);
 
-    handleFirstInstanceImport(tsAst, astOffset, !!moduleAst, str);
+    handleFirstInstanceImport(tsAst, astOffset, !!moduleAst, script.start, str);
 
     // move interfaces and types out of the render function if they are referenced
     // by a $$Generic, otherwise it will be used before being defined after the transformation
