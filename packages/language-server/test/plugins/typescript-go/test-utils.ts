@@ -1,5 +1,5 @@
 import path from 'path';
-import { TsApiService } from '../../../src/plugins/typescript-go/lspService';
+import { TsLSPService } from './lspService';
 import { pathToUrl } from '../../../src/utils';
 import { existsSync, readdirSync, statSync } from 'fs';
 import { VERSION } from 'svelte/compiler';
@@ -11,7 +11,7 @@ let tsserverPath: string | undefined;
 const isSvelte5Plus = Number(VERSION.split('.')[0]) >= 5;
 
 export interface TsGoServiceSetupResult {
-    service: TsApiService;
+    service: TsLSPService;
     docManager: DocumentManager;
     lsConfigManager: LSConfigManager;
 }
@@ -37,7 +37,7 @@ export async function createTsGoServiceForTest(
         lsConfigManager.updateClientCapabilities(capabilities);
     }
 
-    const service = new TsApiService({
+    const service = new TsLSPService({
         docManager: docManager,
         lsConfigManager: lsConfigManager,
         tsserverPath: tsserverPath,
@@ -130,6 +130,30 @@ export function createSnapshotTesterForTsGo<
                     }
                 }
             });
+        }
+    }
+}
+
+export function setupSkip(it: typeof globalThis.it, skips: string[]): typeof globalThis.it {
+    return Object.assign(resultFn, {
+        skip: it.skip,
+        only: it.only,
+        retries: it.retries
+    });
+
+    function resultFn(fn: Mocha.Func): Mocha.Test;
+    function resultFn(name: string, fn?: Mocha.Func): Mocha.Test;
+    function resultFn(nameOrFn: string | Mocha.Func, fn?: Mocha.Func) {
+        if (typeof nameOrFn === 'string') {
+            if (skips.includes(nameOrFn)) {
+                return it.skip(nameOrFn, fn!);
+            }
+            return it(nameOrFn, fn!);
+        } else {
+            if (skips.includes(nameOrFn.name)) {
+                return it.skip(nameOrFn);
+            }
+            return it(nameOrFn);
         }
     }
 }
