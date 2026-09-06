@@ -12,18 +12,32 @@ const constStart = 'const ';
 export class SpanMapGenerator {
     private spans: Span[] = [];
     private prependFlags = new Map<number, SpanMapFeature>();
+    private ignoreMappings = new Set<number>();
 
     /**
      * Add an identifier or literal span to the list of spans to be mapped.
      * The span is defined by its start and end positions in the original source code.
      */
-    addSourceSpan(start: number, end: number, features?: SpanMapFeature) {
-        this.spans.push({ start, end, features: features });
+    addSourceSpan(
+        start: number,
+        end: number,
+        options?: { features?: SpanMapFeature; offsetMapping?: GeneratedOffsetMap }
+    ) {
+        this.spans.push({
+            start,
+            end,
+            features: options?.features,
+            offsetMapping: options?.offsetMapping
+        });
     }
 
     addFlagForPrepend(start: number, features: SpanMapFeature) {
         const existingFlags = this.prependFlags.get(start) ?? SpanMapFeature.None;
         this.prependFlags.set(start, existingFlags | features);
+    }
+
+    ignoreMappingForPosition(start: number) {
+        this.ignoreMappings.add(start);
     }
 
     generateSpanMapping(
@@ -73,7 +87,10 @@ export class SpanMapGenerator {
             }
 
             const generatedStart = lineOffset + segment[0];
-            if (ignorePositionCommentPos.has(generatedStart)) {
+            if (
+                ignorePositionCommentPos.has(generatedStart) ||
+                this.ignoreMappings.has(originalStart)
+            ) {
                 continue;
             }
             const sourceSpan = sourceSpanMap.get(originalStart);
@@ -244,6 +261,12 @@ function findAllIgnorePositionComment(generatedCode: string): Set<number> {
 interface Span {
     start: number;
     end: number;
+    features: SpanMapFeature | undefined;
+    offsetMapping?: GeneratedOffsetMap;
+}
+
+interface GeneratedOffsetMap {
+    offset: number;
     features: SpanMapFeature | undefined;
 }
 

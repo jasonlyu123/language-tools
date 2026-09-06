@@ -13,20 +13,12 @@
 -                                                                                                                                                                 {
 #                                                                                                                                                                  ^ [Verbatim] => 32-33
 -                                                                                                                                                                  •
-#                                                                                                                                                                   ^ [Atom] => 11-12
--                                                                                                                                                                   l
 #                                                                                                                                                                                                                       ^^ [Verbatim] => 15-17
 -                                                                                                                                                                                                                       hi
-#                                                                                                                                                                                                                         ^ [Atom] => 17-18
--                                                                                                                                                                                                                         •
 #                                                                                                                                                                                                                          ^^^ [Verbatim] => 22-25
 -                                                                                                                                                                                                                          hi2
-#                                                                                                                                                                                                                             ^ [Atom] => 25-26
--                                                                                                                                                                                                                             =
 #                                                                                                                                                                                                                              ^^^^ [Verbatim] => 27-31
 -                                                                                                                                                                                                                              hi_2
-#                                                                                                                                                                                                                                  ^ [Atom] => 31-32
--                                                                                                                                                                                                                                  }
 #                                                                                                                                                                                                                                   ^^^ [Verbatim] => 37-40
 -                                                                                                                                                                                                                                   hi3
 >    hi;hi_2;hi3;

@@ -11,18 +11,12 @@
 -                                                                                                                                                                {
 #                                                                                                                                                                 ^ [Atom] => 49-50
 -                                                                                                                                                                 /
-#                                                                                                                                                                  ^ [Atom] => 11-12
--                                                                                                                                                                  o
 #                                                                                                                                                                                        ^ [Atom],[Hover|Completion|Definition|References|Rename] => 14-14
 -
 #                                                                                                                                                                                         ^^^^^ [Verbatim] => 14-19
 -                                                                                                                                                                                         click
-#                                                                                                                                                                                               ^ [Atom] => 19-20
--                                                                                                                                                                                               =
 #                                                                                                                                                                                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^ [Verbatim] => 21-47
 -                                                                                                                                                                                                 $check•?•method1•:•method2
-#                                                                                                                                                                                                                           ^ [Atom] => 47-48
--                                                                                                                                                                                                                           }
 #
 >  { svelteHTML.createElement("button", {  "on:click":$check ? method1 : method2,});  }};
 # [Verbatim] => 51-52
@@ -42,12 +36,8 @@
 -
 #                                              ^^^^^ [Verbatim] => 63-68
 -                                              click
-#                                                    ^ [Atom] => 68-69
--                                                    =
 #                                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^ [Verbatim] => 70-96
 -                                                     $check•?•method1•:•method2
-#                                                                               ^ [Atom] => 96-97
--                                                                               }
 #                                                                                   ^ [Atom] => 99-100
 -                                                                                   B
 >return { props: /** @type {Record<string, never>} */ ({}), slots: {}, events: {} }}

@@ -11,8 +11,6 @@
 -
 #                                                                                                                                           ^^^ [Verbatim] => 11-14
 -                                                                                                                                           foo
-#                                                                                                                                              ^ [Atom] => 14-15
--                                                                                                                                              •
 >
 #
 > { const $$_tnenopmoC0C = __sveltets_2_ensureComponent(Component); new $$_tnenopmoC0C({ target: __sveltets_2_any(), props: { "foo":`leet`,"bar":true,}});}
@@ -29,18 +27,12 @@
 -
 #                                                                                                                              ^^^ [Verbatim] => 30-33
 -                                                                                                                              foo
-#                                                                                                                                 ^ [Atom] => 33-34
--                                                                                                                                 =
 #                                                                                                                                    ^^^^ [Verbatim] => 35-39
 -                                                                                                                                    leet
-#                                                                                                                                        ^ [Atom] => 39-40
--                                                                                                                                        "
 #                                                                                                                                          ^ [Atom] => 40-40
 -
 #                                                                                                                                           ^^^ [Verbatim] => 40-43
 -                                                                                                                                           bar
-#                                                                                                                                              ^ [Atom] => 43-44
--                                                                                                                                              /
 >
 #^^^^ [Atom] => 45-46
 -
@@ -54,8 +46,6 @@
 -                                                                                                                            /
 #                                                                                                                             ^^^^^^ [Verbatim] => 60-66
 -                                                                                                                             ...bar
-#                                                                                                                                   ^ [Atom] => 66-67
--                                                                                                                                   }
 >
 #
 > { const $$_tnenopmoC0C = __sveltets_2_ensureComponent(Component); new $$_tnenopmoC0C({ target: __sveltets_2_any(), props: {  ...bar,}});}
@@ -72,8 +62,6 @@
 -                                                                                                                             /
 #                                                                                                                              ^^^^^^ [Verbatim] => 85-91
 -                                                                                                                              ...bar
-#                                                                                                                                    ^ [Atom] => 91-92
--                                                                                                                                    }
 >
 #
 > { const $$_tnenopmoC0C = __sveltets_2_ensureComponent(Component); new $$_tnenopmoC0C({ target: __sveltets_2_any(), props: {   foo:bar,}});/*Ωignore_startΩ*/() => bar = __sveltets_2_any(null);/*Ωignore_endΩ*/}
@@ -92,12 +80,8 @@
 -                                                                                                                              /
 #                                                                                                                               ^^^ [Verbatim] => 114-117
 -                                                                                                                               foo
-#                                                                                                                                  ^ [Atom] => 117-118
--                                                                                                                                  =
 #                                                                                                                                   ^^^ [Verbatim] => 119-122
 -                                                                                                                                   bar
-#                                                                                                                                      ^ [Atom] => 122-123
--                                                                                                                                      }
 >
 #
 > { const $$_tnenopmoC0C = __sveltets_2_ensureComponent(Component); const $$_tnenopmoC0 = new $$_tnenopmoC0C({ target: __sveltets_2_any(), props: {  }});bar = $$_tnenopmoC0;}};
@@ -110,12 +94,8 @@
 -                                                       Component
 #                                                                                                                                                  ^ [Atom] => 140-141
 -                                                                                                                                                  b
-#                                                                                                                                                    ^ [Atom] => 139-140
--                                                                                                                                                    ╚
 #                                                                                                                                                        ^^^ [Verbatim] => 151-154
 -                                                                                                                                                        bar
-#                                                                                                                                                           ^ [Atom] => 154-155
--                                                                                                                                                           }
 >return { props: /** @type {Record<string, never>} */ ({}), slots: {}, events: {} }}
 >
 >export default class Input__SvelteComponent_ extends __sveltets_2_createSvelte2TsxComponent(__sveltets_2_partial(__sveltets_2_with_any_event($$render()))) {

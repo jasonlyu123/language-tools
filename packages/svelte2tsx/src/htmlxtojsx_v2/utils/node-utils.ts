@@ -28,7 +28,8 @@ export function transform(
     str: MagicString,
     start: number,
     end: number,
-    transformations: TransformationArray
+    transformations: TransformationArray,
+    spanMapGenerator: SpanMapGenerator | undefined
 ) {
     const moves: Array<[number, number]> = [];
     let appendPosition = end;
@@ -69,6 +70,8 @@ export function transform(
                 // so that autocompletion triggered on the last character works correctly.
                 const overwrite = typeof next === 'string' ? next : '';
                 str.overwrite(tEnd - 1, tEnd, overwrite, { contentOnly: true });
+                spanMapGenerator?.ignoreMappingForPosition(tEnd - 1);
+                console.log('tEnd -1', tEnd - 1, 'overwrite', overwrite);
             }
 
             appendPosition = tEnd;
@@ -192,7 +195,7 @@ export function addDirectiveNameMapping(
     nameRange: [number, number]
 ): void {
     const [start, end] = nameRange;
-    spanMapGenerator?.addSourceSpan(start, end, directiveMappingFeatures);
+    spanMapGenerator?.addSourceSpan(start, end, { features: directiveMappingFeatures });
 }
 
 /**

@@ -9,8 +9,6 @@
 -                       item
 #                                                        ^^^^^ [Verbatim] => 7-12
 -                                                        items
-#                                                             ^ [Atom] => 12-13
--                                                             •
 #
 >     { svelteHTML.createElement("li", {});item.name;  item.qty; }
 #^^^^ [Verbatim] => 21-23
@@ -51,12 +49,8 @@
 -  •
 #           ^^^^ [Verbatim] => 82-86
 -           item
-#               ^ [Atom] => 86-87
--               ,
 #                                            ^^^^^ [Verbatim] => 73-78
 -                                            items
-#                                                 ^ [Atom] => 78-79
--                                                 •
 #                                                        ^ [Verbatim] => 88-89
 -                                                        i
 #
@@ -107,18 +101,12 @@
 -   (
 #            ^^^^^^^^^^^^^^^^^ [Verbatim] => 160-177
 -            {•id,•name,•qty•}
-#                             ^ [Atom] => 177-178
--                             ,
 #                                                          ^^^^^ [Verbatim] => 151-156
 -                                                          items
-#                                                               ^ [Atom] => 156-157
--                                                               •
-#                                                                      ^^ [Verbatim] => 179-181
--                                                                      i•
+#                                                                      ^ [Verbatim] => 179-180
+-                                                                      i
 #                                                                            ^^ [Verbatim] => 182-184
 -                                                                            id
-#                                                                              ^ [Atom] => 184-185
--                                                                              )
 #
 >     { svelteHTML.createElement("li", {});i + 1; name;  qty; }
 #^^^^ [Verbatim] => 186-188
@@ -165,8 +153,6 @@
 -          {•id,•...rest•}
 #                                                      ^^^^^^^ [Verbatim] => 237-244
 -                                                      objects
-#                                                             ^ [Atom] => 244-245
--                                                             •
 #
 >     { svelteHTML.createElement("li", {}); { svelteHTML.createElement("span", {});id; }  { const $$_tnenopmoCyM1C = __sveltets_2_ensureComponent(MyComponent); new $$_tnenopmoCyM1C({ target: __sveltets_2_any(), props: {...rest,}});} }
 #^^^^ [Verbatim] => 264-266
@@ -194,8 +180,6 @@
 -                                                                                                                                                 MyComponent
 #                                                                                                                                                                                                                          ^^^^^^^ [Verbatim] => 301-308
 -                                                                                                                                                                                                                          ...rest
-#                                                                                                                                                                                                                                 ^ [Atom] => 308-309
--                                                                                                                                                                                                                                 }
 #                                                                                                                                                                                                                                       ^ [Atom] => 312-313
 -                                                                                                                                                                                                                                       /
 #
@@ -219,8 +203,6 @@
 -          [id,•...rest]
 #                                                    ^^^^^ [Verbatim] => 333-338
 -                                                    items
-#                                                         ^ [Atom] => 338-339
--                                                         •
 #
 >     { svelteHTML.createElement("li", {}); { svelteHTML.createElement("span", {});id; }  { const $$_tnenopmoCyM1C = __sveltets_2_ensureComponent(MyComponent); new $$_tnenopmoCyM1C({ target: __sveltets_2_any(), props: { "values":rest,}});} }
 #^^^^ [Verbatim] => 356-358
@@ -252,12 +234,8 @@
 -
 #                                                                                                                                                                                                                            ^^^^^^ [Verbatim] => 392-398
 -                                                                                                                                                                                                                            values
-#                                                                                                                                                                                                                                  ^ [Atom] => 398-399
--                                                                                                                                                                                                                                  =
 #                                                                                                                                                                                                                                    ^^^^ [Verbatim] => 400-404
 -                                                                                                                                                                                                                                    rest
-#                                                                                                                                                                                                                                        ^ [Atom] => 404-405
--                                                                                                                                                                                                                                        }
 #                                                                                                                                                                                                                                              ^ [Atom] => 408-409
 -                                                                                                                                                                                                                                              /
 #
@@ -281,8 +259,6 @@
 -          todo
 #                                           ^^^^^ [Verbatim] => 429-434
 -                                           todos
-#                                                ^ [Atom] => 434-435
--                                                •
 #
 >     { svelteHTML.createElement("p", {});todo.text; }
 #^^^^ [Verbatim] => 443-445

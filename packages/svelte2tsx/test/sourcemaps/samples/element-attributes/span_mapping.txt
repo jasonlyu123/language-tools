@@ -9,8 +9,6 @@
 -
 #                                                      ^^^ [Verbatim] => 9-12
 -                                                      foo
-#                                                         ^ [Atom] => 12-13
--                                                         /
 >
 #
 >  { svelteHTML.createElement("element", { "foo":true,});}
@@ -29,9 +27,6 @@
 -
 #                                           ^^^ [Verbatim] => 30-33
 -                                           foo
-#                                              ^ [Atom] => 33-34
--
--
 >
 #
 > { svelteHTML.createElement("element", {   "foo":`leet`,});}
@@ -53,12 +48,8 @@
 -
 #                                            ^^^ [Verbatim] => 52-55
 -                                            foo
-#                                               ^ [Atom] => 55-56
--                                               =
 #                                                  ^^^^ [Verbatim] => 57-61
 -                                                  leet
-#                                                      ^ [Atom] => 61-62
--                                                      "
 >
 #
 >  { svelteHTML.createElement("element", { foo,"bar":true,});}
@@ -75,15 +66,10 @@
 -                                         ╚
 #                                          ^^^ [Verbatim] => 80-83
 -                                          foo
-#                                             ^ [Atom] => 83-84
--                                             }
 #                                              ^ [Atom] => 84-84
 -
 #                                               ^^^ [Verbatim] => 84-87
 -                                               bar
-#                                                  ^ [Atom] => 87-88
--
--
 >
 #
 > { svelteHTML.createElement("element", {  foo,});}
@@ -101,8 +87,6 @@
 -
 #                                          ^^^ [Verbatim] => 107-110
 -                                          foo
-#                                             ^ [Atom] => 110-111
--                                             }
 >
 #
 > { svelteHTML.createElement("element", {  "bind:foo":foo,});/*Ωignore_startΩ*/() => foo = __sveltets_2_any(null);/*Ωignore_endΩ*/}
@@ -117,13 +101,8 @@
 -                                        •
 #                                         ^ [Atom] => 141-142
 -                                         /
-#                                          ^ [Atom] => 126-127
--
--
 #                                                     ^^^ [Verbatim] => 136-139
 -                                                     foo
-#                                                        ^ [Atom] => 139-140
--                                                        •
 >
 #
 > { svelteHTML.createElement("element", {   "bind:foo":bar,});/*Ωignore_startΩ*/() => bar = __sveltets_2_any(null);/*Ωignore_endΩ*/}};
@@ -138,17 +117,10 @@
 -                                        •
 #                                         ^ [Atom] => 168-169
 -                                         {
-#                                           ^ [Atom] => 154-155
--
--
 #                                            ^^^^^^^^ [Verbatim] => 159-167
 -                                            bind:foo
-#                                                    ^ [Atom] => 167-168
--                                                    =
 #                                                      ^^^ [Verbatim] => 169-172
 -                                                      bar
-#                                                         ^ [Atom] => 172-173
--                                                         }
 >return { props: /** @type {Record<string, never>} */ ({}), slots: {}, events: {} }}
 >
 >export default class Input__SvelteComponent_ extends __sveltets_2_createSvelte2TsxComponent(__sveltets_2_partial(__sveltets_2_with_any_event($$render()))) {

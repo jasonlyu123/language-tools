@@ -66,6 +66,7 @@ export class Element {
         private str: MagicString,
         private node: BaseNode,
         public typingsNamespace: string,
+        private spanMapGenerator: SpanMapGenerator | undefined,
         public parent?: any
     ) {
         if (parent) {
@@ -238,15 +239,15 @@ export class Element {
                 ...this.attrsTransformation,
                 ...this.startEndTransformation,
                 ...this.endTransformation
-            ]);
+            ], this.spanMapGenerator);
         } else {
             transform(this.str, this.startTagStart, this.startTagEnd, [
                 ...slotLetTransformation,
                 ...this.actionsTransformation,
                 ...this.getStartTransformation(),
                 ...this.attrsTransformation,
-                ...this.startEndTransformation
-            ]);
+                ...this.startEndTransformation,
+            ], this.spanMapGenerator);
 
             const closingTag = this.str.original.substring(
                 this.str.original.lastIndexOf('</', this.node.end - 1) + 2,
@@ -261,7 +262,7 @@ export class Element {
                 tagEndIdx === -1 || closingTag.trim() !== this.node.name
                     ? this.node.end
                     : tagEndIdx + this.node.start;
-            transform(this.str, endStart, this.node.end, this.endTransformation);
+            transform(this.str, endStart, this.node.end, this.endTransformation, this.spanMapGenerator);
         }
     }
 

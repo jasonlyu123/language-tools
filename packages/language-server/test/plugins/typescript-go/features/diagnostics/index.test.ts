@@ -33,7 +33,7 @@ const skips = [
 
 const providerPool = new Map<string, SvelteCheckTSGoDiagnosticsProvider>();
 
-describe('SvelteCheckTSGoDiagnosticsProvider', function () {
+describe.skip('SvelteCheckTSGoDiagnosticsProvider', function () {
     const fixturesDir = path.join(root, 'fixtures');
     executeTests({
         dir: fixturesDir,

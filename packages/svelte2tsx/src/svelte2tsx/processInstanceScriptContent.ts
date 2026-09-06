@@ -320,10 +320,6 @@ export function processInstanceScriptContent(
             handleIdentifier(node, parent);
         }
 
-        if (ts.isStringLiteral(node)) {
-            spanMapGenerator?.addSourceSpan(astOffset + node.getStart(), astOffset + node.end);
-        }
-
         //track implicit declarations in reactive blocks at the top level
         if (
             ts.isLabeledStatement(node) &&
