@@ -62,6 +62,8 @@ import { createLanguageServices } from './plugins/css/service';
 import { FileSystemProvider } from './lib/FileSystemProvider';
 import { TemplateASTParseLoader } from './plugins/svelte/TemplateASTLoader';
 import { contentMapperEnableCheck } from './plugins/typescript-go/content-mapper';
+import { TsApiService } from './plugins/typescript-go/TsApiService';
+import { TypeScriptGoPlugin } from './plugins/typescript-go/TypeScriptGoPlugin';
 
 namespace TagCloseRequest {
     export const type: RequestType<TextDocumentPositionParams, string | null, any> =
@@ -126,6 +128,7 @@ export function startServer(options?: LSOptions) {
     const recursiveWatchPattern = '**/' + nonRecursiveWatchPattern;
 
     let enableTsFeatures = true;
+    let tsGoPlugin: TypeScriptGoPlugin | undefined;
 
     connection.onInitialize((evt) => {
         const workspaceUris = evt.workspaceFolders?.map((folder) => folder.uri.toString()) ?? [
@@ -241,6 +244,13 @@ export function startServer(options?: LSOptions) {
                     docManager
                 )
             );
+        } else {
+            tsGoPlugin = new TypeScriptGoPlugin((v: string) => {
+                connection.sendNotification(ShowMessageNotification.type, {
+                    message: v,
+                    type: MessageType.Warning
+                });
+            });
         }
 
         const clientSupportApplyEditCommand = !!evt.capabilities.workspace?.applyEdit;
@@ -482,6 +492,8 @@ export function startServer(options?: LSOptions) {
     connection.onDidOpenTextDocument((evt) => {
         const document = docManager.openClientDocument(evt.textDocument);
         diagnosticsManager.scheduleUpdate(document);
+
+        tsGoPlugin?.checkProjectStatus({ uri: document.uri });
     });
 
     connection.onDidCloseTextDocument((evt) => docManager.closeDocument(evt.textDocument.uri));
@@ -698,6 +710,12 @@ export function startServer(options?: LSOptions) {
             return { js, css };
         } else {
             return null;
+        }
+    });
+
+    connection.onNotification('$/custom/setupTsApi', async (params) => {
+        if (tsGoPlugin) {
+            await tsGoPlugin.setupApiService(params.pipe);
         }
     });
 

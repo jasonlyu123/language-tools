@@ -38,7 +38,7 @@ import {
     sendNotificationMiddleware
 } from './typescript/configurationMiddleware';
 import { versions } from 'node:process';
-import { setupTsContentMapper } from './typescript-go/contentMapper';
+import { ContentMapperOptions, setupTsContentMapper } from './typescript-go/contentMapper';
 
 const [node_major, node_minor] = (versions?.node ?? '0.0.0-unknown').split('.', 3).map(Number);
 
@@ -140,7 +140,7 @@ function toggleFileReferencesMenu(enable: boolean) {
 export function activateSvelteLanguageServer(
     context: ExtensionContext,
     options?: {
-        ts7ContentMapperOptions: { enable: boolean };
+        ts7ContentMapperOptions: ContentMapperOptions;
     }
 ) {
     warnIfOldExtensionInstalled();
@@ -240,7 +240,11 @@ export function activateSvelteLanguageServer(
             },
             dontFilterIncompleteCompletions: true, // VSCode filters client side and is smarter at it than us
             isTrusted: workspace.isTrusted,
-            ts7ContentMapperOptions: options?.ts7ContentMapperOptions
+            ts7ContentMapperOptions: options
+                ? {
+                      enable: options.ts7ContentMapperOptions.enable
+                  }
+                : undefined
         },
         middleware: {
             resolveCodeLens: resolveCodeLensMiddleware,
@@ -264,12 +268,13 @@ export function activateSvelteLanguageServer(
         );
         context.subscriptions.push(disposable);
 
-        if (
-            options?.ts7ContentMapperOptions.enable &&
-            !ls.initializeResult?.customServerStatus?.experimental?.contentMapperModeEnabled
-        ) {
-            toggleFileReferencesMenu(true);
-            enableCustomTsFeatures();
+        if (options?.ts7ContentMapperOptions.enable) {
+            if (!ls.initializeResult?.customServerStatus?.experimental?.contentMapperModeEnabled) {
+                toggleFileReferencesMenu(true);
+                enableCustomTsFeatures();
+            } else {
+                setupTsApi();
+            }
         }
     });
 
@@ -318,6 +323,15 @@ export function activateSvelteLanguageServer(
 
         addRenameFileListener(getLS);
         addDidChangeTextDocumentListener(getLS);
+    }
+
+    async function setupTsApi() {
+        if (!options?.ts7ContentMapperOptions.extensionApi) {
+            return;
+        }
+
+        const pipe = await options?.ts7ContentMapperOptions.extensionApi?.initializeAPIConnection();
+        ls.sendNotification('$/custom/setupTsApi', { pipe });
     }
 
     if (!options?.ts7ContentMapperOptions.enable) {
