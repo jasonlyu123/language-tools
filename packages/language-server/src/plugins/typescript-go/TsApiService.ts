@@ -12,14 +12,9 @@ export class TsApiService {
 
     static async create(pipe: string): Promise<TsApiService | null> {
         try {
-            const pkgPath = require.resolve('@typescript/native/package.json');
-            const pkg = require(pkgPath);
-            if (pkg.name !== 'typescript') {
-                return null;
-            }
             const tsApiAsync = await import('@typescript/native/unstable/async');
-
             const tsAst = await import('@typescript/native/unstable/ast');
+    
             return new TsApiService(pipe, tsApiAsync, tsAst);
         } catch (error) {
             Logger.error('Failed to create LspApiService', error);

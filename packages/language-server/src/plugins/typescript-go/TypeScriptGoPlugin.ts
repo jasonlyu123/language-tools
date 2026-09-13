@@ -3,36 +3,24 @@ import { CodeLens, Location, TextDocumentIdentifier } from 'vscode-languageserve
 import { Document } from '../../lib/documents';
 import { CodeLensProvider, FindComponentReferencesProvider } from '../interfaces';
 import { TsApiService } from './TsApiService';
+import { TsGoComponentReferenceProvider } from './features/FindComponentReferencesProvider';
 
 export class TypeScriptGoPlugin implements CodeLensProvider, FindComponentReferencesProvider {
-    constructor(sendNotification: (v: string) => void) {
+    constructor(sendNotification: (v: string) => void, apiService: TsApiService) {
         this.sendNotification = sendNotification;
+        this.apiService = apiService;
+        this.findComponentReferencesProvider = new TsGoComponentReferenceProvider(apiService);
     }
 
     __name = 'tsgo';
 
-    private apiService: TsApiService | null = null;
-    private pendingProjectCheck: string[] = [];
-    private sendNotification: (v: string) => void;
+    private readonly apiService: TsApiService;
+    private readonly sendNotification: (v: string) => void;
+    private readonly findComponentReferencesProvider: FindComponentReferencesProvider;
 
-    async setupApiService(pipe: string) {
-        this.apiService = await TsApiService.create(pipe);
-        for (const uri of this.pendingProjectCheck) {
-            this.checkAndNotifyProjectStatus(uri, this.apiService!);
-        }
-        this.pendingProjectCheck = [];
-    }
-
-    checkProjectStatus(identifier: TextDocumentIdentifier) {
-        if (!this.apiService) {
-            this.pendingProjectCheck.push(identifier.uri);
-            return;
-        }
-        this.checkAndNotifyProjectStatus(identifier.uri, this.apiService!);
-    }
-
-    private async checkAndNotifyProjectStatus(uri: string, apiService: TsApiService) {
-        const projectStatus = await apiService.fileProjectStatus(uri);
+    async checkProjectStatus(identifier: TextDocumentIdentifier) {
+        const uri = identifier.uri;
+        const projectStatus = await this.apiService.fileProjectStatus(uri);
         if (!projectStatus) {
             this.sendNotification(
                 `File ${uri} doesn't belongs to any projects with content-mapper setup,\n language features may not be available.`
@@ -42,7 +30,7 @@ export class TypeScriptGoPlugin implements CodeLensProvider, FindComponentRefere
     }
 
     getCodeLens(document: Document): Promise<CodeLens[] | null> {
-        throw new Error('Method not implemented.');
+        return Promise.resolve(null);
     }
 
     resolveCodeLens(
@@ -50,10 +38,11 @@ export class TypeScriptGoPlugin implements CodeLensProvider, FindComponentRefere
         codeLensToResolve: CodeLens,
         cancellationToken?: CancellationToken
     ): Promise<CodeLens> {
-        throw new Error('Method not implemented.');
+        return Promise.resolve(codeLensToResolve);
+        // throw new Error('Method not implemented.');
     }
 
     findComponentReferences(uri: string): Promise<Location[] | null> {
-        throw new Error('Method not implemented.');
+        return this.findComponentReferencesProvider.findComponentReferences(uri);
     }
 }

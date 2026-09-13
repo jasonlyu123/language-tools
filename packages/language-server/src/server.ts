@@ -27,7 +27,8 @@ import {
     DocumentDiagnosticRequest,
     DocumentDiagnosticParams,
     DocumentDiagnosticReport,
-    DiagnosticRefreshRequest
+    DiagnosticRefreshRequest,
+    CodeLensRefreshRequest
 } from 'vscode-languageserver';
 import { IPCMessageReader, IPCMessageWriter, createConnection } from 'vscode-languageserver/node';
 import {
@@ -127,7 +128,7 @@ export function startServer(options?: LSOptions) {
         '*.{' + watchExtensions.map((ext) => ext.slice(1)).join(',') + '}';
     const recursiveWatchPattern = '**/' + nonRecursiveWatchPattern;
 
-    let enableTsFeatures = true;
+    let enableTs6Features = true;
     let tsGoPlugin: TypeScriptGoPlugin | undefined;
 
     connection.onInitialize((evt) => {
@@ -203,7 +204,7 @@ export function startServer(options?: LSOptions) {
         const fileSystemProvider = new FileSystemProvider();
         const workspaceFolders = evt.workspaceFolders ?? [{ name: '', uri: evt.rootUri ?? '' }];
 
-        enableTsFeatures =
+        enableTs6Features =
             !evt.initializationOptions.ts7ContentMapperOptions?.enable ||
             !contentMapperEnableCheck(workspaceFolders);
 
@@ -211,7 +212,7 @@ export function startServer(options?: LSOptions) {
         pluginHost.register(
             (sveltePlugin = new SveltePlugin(
                 configManager,
-                enableTsFeatures ? undefined : new TemplateASTParseLoader(docManager)
+                enableTs6Features ? undefined : new TemplateASTParseLoader(docManager)
             ))
         );
         pluginHost.register(
@@ -226,7 +227,7 @@ export function startServer(options?: LSOptions) {
             new CSSPlugin(docManager, configManager, workspaceFolders, cssLanguageServices)
         );
         const normalizedWorkspaceUris = workspaceUris.map(normalizeUri);
-        if (enableTsFeatures) {
+        if (enableTs6Features) {
             pluginHost.register(
                 new TypeScriptPlugin(
                     configManager,
@@ -245,12 +246,19 @@ export function startServer(options?: LSOptions) {
                 )
             );
         } else {
-            tsGoPlugin = new TypeScriptGoPlugin((v: string) => {
-                connection.sendNotification(ShowMessageNotification.type, {
-                    message: v,
-                    type: MessageType.Warning
-                });
-            });
+            connection.onNotification(
+                '$/custom/setupTsApi',
+                async (params: { pipe: string; currentFileUri: string }) => {
+                    await initializeTsGoPlugin(params.pipe, connection);
+                    if (!tsGoPlugin) {
+                        return;
+                    }
+                    if (params.currentFileUri) {
+                        tsGoPlugin.checkProjectStatus({ uri: params.currentFileUri });
+                    }
+                    connection.sendRequest(CodeLensRefreshRequest.type);
+                }
+            );
         }
 
         const clientSupportApplyEditCommand = !!evt.capabilities.workspace?.applyEdit;
@@ -285,7 +293,7 @@ export function startServer(options?: LSOptions) {
                     return diagnostics;
                 }
             );
-        } else if (enableTsFeatures) {
+        } else if (enableTs6Features) {
             connection.onDidSaveTextDocument(
                 diagnosticsManager.scheduleUpdateAll.bind(diagnosticsManager)
             );
@@ -384,43 +392,43 @@ export function startServer(options?: LSOptions) {
                     evt.initializationOptions?.configuration?.svelte?.plugin?.svelte
                         ?.documentHighlight?.enable ?? true,
 
-                signatureHelpProvider: enableTsFeatures
+                signatureHelpProvider: enableTs6Features
                     ? {
                           triggerCharacters: ['(', ',', '<'],
                           retriggerCharacters: [')']
                       }
                     : undefined,
-                semanticTokensProvider: enableTsFeatures
+                semanticTokensProvider: enableTs6Features
                     ? {
                           legend: getSemanticTokenLegends(),
                           range: true,
                           full: true
                       }
                     : undefined,
-                linkedEditingRangeProvider: enableTsFeatures,
-                implementationProvider: enableTsFeatures,
-                typeDefinitionProvider: enableTsFeatures,
-                inlayHintProvider: enableTsFeatures,
-                callHierarchyProvider: enableTsFeatures,
+                linkedEditingRangeProvider: enableTs6Features,
+                implementationProvider: enableTs6Features,
+                typeDefinitionProvider: enableTs6Features,
+                inlayHintProvider: enableTs6Features,
+                callHierarchyProvider: enableTs6Features,
                 codeLensProvider: {
-                    resolveProvider: enableTsFeatures
+                    resolveProvider: enableTs6Features
                 },
-                workspaceSymbolProvider: enableTsFeatures,
+                workspaceSymbolProvider: enableTs6Features,
                 diagnosticProvider: {
-                    interFileDependencies: enableTsFeatures,
+                    interFileDependencies: enableTs6Features,
                     workspaceDiagnostics: false
                 }
             },
             customServerStatus: {
                 experimental: {
-                    contentMapperModeEnabled: !enableTsFeatures
+                    contentMapperModeEnabled: !enableTs6Features
                 }
             }
         };
     });
 
     connection.onInitialized(() => {
-        if (watcher || !enableTsFeatures) {
+        if (watcher || !enableTs6Features) {
             return;
         }
 
@@ -713,11 +721,23 @@ export function startServer(options?: LSOptions) {
         }
     });
 
-    connection.onNotification('$/custom/setupTsApi', async (params) => {
-        if (tsGoPlugin) {
-            await tsGoPlugin.setupApiService(params.pipe);
-        }
-    });
-
     connection.listen();
+
+    async function initializeTsGoPlugin(pipe: string, connection: Connection) {
+        const tsApiService = await TsApiService.create(pipe);
+        if (!tsApiService) {
+            connection.sendNotification(ShowMessageNotification.type, {
+                message: 'Failed to initialize TypeScript 7 features.',
+                type: MessageType.Error
+            });
+            return;
+        }
+        const tsGoPlugin = new TypeScriptGoPlugin((v: string) => {
+            connection.sendNotification(ShowMessageNotification.type, {
+                message: v,
+                type: MessageType.Warning
+            });
+        }, tsApiService);
+        pluginHost.register(tsGoPlugin);
+    }
 }

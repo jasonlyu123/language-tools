@@ -273,7 +273,7 @@ export function activateSvelteLanguageServer(
                 toggleFileReferencesMenu(true);
                 enableCustomTsFeatures();
             } else {
-                setupTsApi();
+                initializeTsGoApi();
             }
         }
     });
@@ -319,21 +319,27 @@ export function activateSvelteLanguageServer(
 
     function enableCustomTsFeatures() {
         addFindFileReferencesListener(getLS, context);
-        addFindComponentReferencesListener(getLS, context);
 
         addRenameFileListener(getLS);
         addDidChangeTextDocumentListener(getLS);
     }
 
-    async function setupTsApi() {
+    async function initializeTsGoApi() {
         if (!options?.ts7ContentMapperOptions.extensionApi) {
             return;
         }
 
         const pipe = await options?.ts7ContentMapperOptions.extensionApi?.initializeAPIConnection();
-        ls.sendNotification('$/custom/setupTsApi', { pipe });
+        const activeDoc = window.activeTextEditor?.document;
+        ls.sendNotification('$/custom/setupTsApi', {
+            pipe,
+            currentFileUri: activeDoc?.uri.fsPath?.endsWith('.svelte')
+                ? activeDoc?.uri.toString()
+                : undefined
+        });
     }
 
+    addFindComponentReferencesListener(getLS, context);
     if (!options?.ts7ContentMapperOptions.enable) {
         enableCustomTsFeatures();
     }
