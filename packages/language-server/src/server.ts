@@ -391,6 +391,9 @@ export function startServer(options?: LSOptions) {
                 documentHighlightProvider:
                     evt.initializationOptions?.configuration?.svelte?.plugin?.svelte
                         ?.documentHighlight?.enable ?? true,
+                codeLensProvider: {
+                    resolveProvider: true
+                },
 
                 signatureHelpProvider: enableTs6Features
                     ? {
@@ -410,9 +413,6 @@ export function startServer(options?: LSOptions) {
                 typeDefinitionProvider: enableTs6Features,
                 inlayHintProvider: enableTs6Features,
                 callHierarchyProvider: enableTs6Features,
-                codeLensProvider: {
-                    resolveProvider: enableTs6Features
-                },
                 workspaceSymbolProvider: enableTs6Features,
                 diagnosticProvider: {
                     interFileDependencies: enableTs6Features,
@@ -724,7 +724,7 @@ export function startServer(options?: LSOptions) {
     connection.listen();
 
     async function initializeTsGoPlugin(pipe: string, connection: Connection) {
-        const tsApiService = await TsApiService.create(pipe);
+        const tsApiService = await TsApiService.create(pipe, configManager);
         if (!tsApiService) {
             connection.sendNotification(ShowMessageNotification.type, {
                 message: 'Failed to initialize TypeScript 7 features.',
@@ -732,12 +732,13 @@ export function startServer(options?: LSOptions) {
             });
             return;
         }
-        const tsGoPlugin = new TypeScriptGoPlugin((v: string) => {
+        const sendNotification = (v: string) => {
             connection.sendNotification(ShowMessageNotification.type, {
                 message: v,
                 type: MessageType.Warning
             });
-        }, tsApiService);
+        };
+        const tsGoPlugin = new TypeScriptGoPlugin(sendNotification, tsApiService, configManager);
         pluginHost.register(tsGoPlugin);
     }
 }

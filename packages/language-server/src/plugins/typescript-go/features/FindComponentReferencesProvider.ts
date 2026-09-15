@@ -2,8 +2,10 @@ import { TsApiService } from '../TsApiService';
 import { FindComponentReferencesProvider } from '../../interfaces';
 import { Location } from 'vscode-languageserver-types';
 import { tsApiAsync, tsAst } from '../types';
-import { pathToUrl } from '../../../utils';
+import { isNotNullOrUndefined, pathToUrl } from '../../../utils';
 import { SpanMapDocument } from '../SpanMapDocument';
+import { CancellationToken } from 'vscode-languageserver-protocol';
+import { getDeclarationFromName, waitWithCancellation } from './utils';
 
 export class TsGoComponentReferenceProvider implements FindComponentReferencesProvider {
     private readonly tsApiService: TsApiService;
@@ -13,26 +15,33 @@ export class TsGoComponentReferenceProvider implements FindComponentReferencesPr
     }
 
     async findComponentReferences(uri: string): Promise<Location[] | null> {
-        return this.findComponentReferencesWorker(uri, { includeImports: true });
+        return this.findComponentReferencesWorker(uri, { includeDeclaration: true });
     }
 
-    async findComponentReferencesForCodeLens(uri: string): Promise<Location[] | null> {
-        return this.findComponentReferencesWorker(uri, { includeImports: false });
+    async findComponentReferencesForCodeLens(
+        uri: string,
+        cancellationToken: CancellationToken | undefined
+    ): Promise<Location[] | null> {
+        return this.findComponentReferencesWorker(uri, {
+            includeDeclaration: false,
+            cancellationToken
+        });
     }
 
     private async findComponentReferencesWorker(
         uri: string,
         options: {
-            includeImports: boolean;
+            includeDeclaration: boolean;
+            cancellationToken?: CancellationToken | undefined;
         }
     ): Promise<Location[] | null> {
         const project = await this.tsApiService.getProject(uri);
-        if (!project) {
+        if (!project || options.cancellationToken?.isCancellationRequested) {
             return null;
         }
 
         const file = await project.program.getSourceFile({ uri });
-        if (!file) {
+        if (!file || options.cancellationToken?.isCancellationRequested) {
             return null;
         }
 
@@ -45,16 +54,41 @@ export class TsGoComponentReferenceProvider implements FindComponentReferencesPr
             node,
             node.getStart()
         );
+        if (options.cancellationToken?.isCancellationRequested) {
+            return null;
+        }
         const locationPromises: Promise<Location | null>[] = [];
         const documents = new Map<string, SpanMapDocument>();
         for (const entry of refs) {
+            const symbol = entry.symbol;
+            const symbolDeclarations = options.includeDeclaration
+                ? undefined
+                : await this.resolveDeclaration(symbol, options.cancellationToken);
+
+            if (options.cancellationToken?.isCancellationRequested) {
+                return null;
+            }
             for (const ref of entry.references) {
-                locationPromises.push(this.toLocation(ref, documents, options.includeImports)); 
+                locationPromises.push(
+                    this.toLocation(ref, symbolDeclarations, documents, options.includeDeclaration)
+                );
             }
         }
-        return Promise.all(locationPromises).then((locations) =>
-            locations.filter((loc): loc is Location => loc !== null)
+
+        const result = await waitWithCancellation(locationPromises, options.cancellationToken);
+
+        return result.filter(isNotNullOrUndefined);
+    }
+
+    private async resolveDeclaration(
+        symbol: tsApiAsync.Symbol | undefined,
+        cancelationToken?: CancellationToken | undefined
+    ) {
+        const declarations = await waitWithCancellation(
+            symbol?.declarations?.map((v) => v.resolve()) || [],
+            cancelationToken
         );
+        return declarations.filter(isNotNullOrUndefined);
     }
 
     private findDefinitionNode(file: tsAst.SourceFile) {
@@ -79,13 +113,18 @@ export class TsGoComponentReferenceProvider implements FindComponentReferencesPr
 
     private async toLocation(
         nodeHandle: tsApiAsync.NodeHandle,
+        symbolDeclaration: tsAst.Node[] | undefined,
         documents: Map<string, SpanMapDocument>,
-        includeImports: boolean
+        includeDeclaration: boolean
     ) {
         const node = await nodeHandle.resolve();
         if (!node) {
             return null;
         }
+        if (!includeDeclaration && this.isDeclarationOfSymbol(symbolDeclaration, node)) {
+            return null;
+        }
+
         const sourceFile = node.getSourceFile();
         if (!sourceFile) {
             return null;
@@ -141,5 +180,14 @@ export class TsGoComponentReferenceProvider implements FindComponentReferencesPr
                 end
             }
         };
+    }
+
+    private isDeclarationOfSymbol(symbolDeclaration: tsAst.Node[] | undefined, node: tsAst.Node) {
+        if (!symbolDeclaration) {
+            return false;
+        }
+
+        const declaration = getDeclarationFromName(this.tsApiService.astModule, node);
+        return symbolDeclaration.some((decl) => decl === declaration);
     }
 }
