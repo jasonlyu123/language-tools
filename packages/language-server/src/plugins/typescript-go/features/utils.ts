@@ -9,7 +9,7 @@ type NodeTypePredicate<T extends tsAst.Node> = (
 
 /**
  * https://github.com/microsoft/typescript-go/blob/2a5e1cf9fe2261f2ad56871a6d2ed12d6ac34083/internal/scanner/scanner.go#L2473
- * TODO: check if it's added to the ast package
+ * TODO: Remove this when we bump the requirement to TypeScript 7.0 stable
  */
 export function getStartOfNode(
     tsAstModule: typeof tsAst,

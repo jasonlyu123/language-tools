@@ -18,7 +18,7 @@ import {
 } from '../../lib/documents';
 import { pathToUrl, urlToPath } from '../../utils';
 import { ConsumerDocumentMapper } from './DocumentMapper';
-import { SvelteNode, SvelteNodeWalker, walkSvelteAst } from '../svelte/features/svelte-ast-utils';
+import { SvelteNode, svelteNodeAt, SvelteNodeWalker, walkSvelteAst } from '../svelte/features/svelte-ast-utils';
 import {
     getScriptKindFromAttributes,
     getScriptKindFromFileName,
@@ -382,32 +382,13 @@ export class SvelteDocumentSnapshot implements DocumentSnapshot {
         if (!this.htmlAst) {
             return null;
         }
+
         const offset =
             typeof positionOrOffset === 'number'
                 ? positionOrOffset
                 : this.parent.offsetAt(positionOrOffset);
-
-        let foundNode: SvelteNode | null = null;
-        this.walkSvelteAst({
-            enter(node) {
-                // In case the offset is at a point where a node ends and a new one begins,
-                // the node where the code ends is used. If this introduces problems, introduce
-                // an affinity parameter to prefer the node where it ends/starts.
-                if (node.start > offset || node.end < offset) {
-                    this.skip();
-                    return;
-                }
-                const parent = foundNode;
-                // Use Object.create so the "parent" property isn't added to the original ast,
-                // causing an infinite loop. This is cheaper than spreading all properties.
-                foundNode = Object.create(node);
-                if (parent) {
-                    foundNode!.parent = parent;
-                }
-            }
-        });
-
-        return foundNode;
+        
+        return svelteNodeAt(this.htmlAst, offset);
     }
 
     walkSvelteAst(walker: SvelteNodeWalker) {
