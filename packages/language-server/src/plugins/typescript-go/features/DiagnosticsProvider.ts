@@ -56,12 +56,16 @@ import {
     isInReactiveStatement,
     isReactiveStatement
 } from './utils';
+import { SourceFileDiagnosticHandler } from '../SvelteSourceFileDocument';
+import { SvelteSnapshotDiagnosticsHandler } from './LegacyDiagnosticProvider';
 
 const VIRTUAL_SUFFIX = '_virtual__';
 const SVELTE_EXT_LENGTH = '.svelte'.length;
 const D_SVELTE_TS_EXTENSION = '.d.svelte.ts';
 const D_SVELTE_TS_LENGTH = D_SVELTE_TS_EXTENSION.length;
 const SVELTE_DTS_EXTENSION = '.svelte.d.ts';
+
+const CONTENT_MAPPER_UNMAPPED_CODE = 100030;
 
 export class SvelteCheckTSGoDiagnosticsProvider implements DiagnosticsProvider {
     private readonly api: tsApiSync.API;
@@ -158,17 +162,34 @@ export class SvelteCheckTSGoDiagnosticsProvider implements DiagnosticsProvider {
         const virtualPath = toVirtualPath(tsDoc);
         const diagnostics: tsApiSync.Diagnostic[] = [];
         const program = project.program;
-        diagnostics.push(...(program.getSyntacticDiagnostics(virtualPath) || []));
-        diagnostics.push(...(program.getSuggestionDiagnostics(virtualPath) || []));
-        diagnostics.push(...(program.getSemanticDiagnostics(virtualPath) || []));
+        // TODO remove this check once the API is stable
+        if (typeof this.api.batch === 'function') {
+            this.api
+                .batch(
+                    program.getSyntacticDiagnostics.gen(virtualPath),
+                    program.getSuggestionDiagnostics.gen(virtualPath),
+                    program.getSemanticDiagnostics.gen(virtualPath)
+                )
+                .forEach((diag) => diagnostics.push(...diag));
+        } else {
+            diagnostics.push(...(program.getSyntacticDiagnostics(virtualPath) || []));
+            diagnostics.push(...(program.getSuggestionDiagnostics(virtualPath) || []));
+            diagnostics.push(...(program.getSemanticDiagnostics(virtualPath) || []));
+        }
+
+        const sourceFile = project.program.getSourceFile(virtualPath);
+        if (!sourceFile) {
+            throw new Error(`Source file not found for ${virtualPath}`);
+        }
+        const handler = new SvelteSnapshotDiagnosticsHandler(this.tsAstModule, tsDoc, sourceFile!);
 
         return mapAndFilterDiagnostics(
             this.tsAstModule,
             this.tsApiModule,
             project,
             diagnostics,
-            document,
-            tsDoc
+            handler,
+            this.createMappingContext(handler)
         );
     }
 
@@ -226,13 +247,23 @@ export class SvelteCheckTSGoDiagnosticsProvider implements DiagnosticsProvider {
             }
 
             if (tsDoc instanceof SvelteDocumentSnapshot) {
+                const sourceFile = project.program.getSourceFile(tsDoc.filePath);
+                if (!sourceFile) {
+                    // should not happen, but if it does, we skip this file
+                    continue;
+                }
+                const handler = new SvelteSnapshotDiagnosticsHandler(
+                    this.tsAstModule,
+                    tsDoc,
+                    sourceFile
+                );
                 const mappedDiags = mapAndFilterDiagnostics(
                     this.tsAstModule,
                     this.tsApiModule,
                     project,
                     diags,
-                    tsDoc.parent,
-                    tsDoc
+                    handler,
+                    this.createMappingContext(handler)
                 );
                 result.push({
                     filePath: fileName,
@@ -579,6 +610,20 @@ export class SvelteCheckTSGoDiagnosticsProvider implements DiagnosticsProvider {
         return diagnostics.filter(dedupDiagnostics());
     }
 
+    private createMappingContext(handler: SourceFileDiagnosticHandler): DiagnosticsMappingContext {
+        return {
+            ensureVirtualSpan: (diagnostic: tsApiSync.Diagnostic) => {
+                return diagnostic;
+            },
+            ensureOriginalRange: (diagnostic: tsApiSync.Diagnostic) => {
+                return handler.mapToOriginalRange({
+                    pos: diagnostic.pos,
+                    end: diagnostic.end
+                }).range;
+            }
+        };
+    }
+
     dispose() {
         this.api.close();
     }
@@ -617,26 +662,35 @@ function toRealPath(path: string) {
     return path.slice(0, -3).replace(VIRTUAL_SUFFIX, '') + '.svelte';
 }
 
+interface DiagnosticsMappingContext {
+    ensureVirtualSpan(diagnostic: tsApiSync.Diagnostic): tsAst.ReadonlyTextRange | null;
+    ensureOriginalRange(diagnostic: tsApiSync.Diagnostic): Range;
+}
+
 function mapAndFilterDiagnostics(
     tsAstModule: typeof tsAst,
     tsApiModule: typeof tsApiSync,
     tsApiProject: tsApiSync.Project,
     diagnostics: tsApiSync.Diagnostic[],
-    document: Document,
-    tsDoc: SvelteDocumentSnapshot
+    tsDoc: SourceFileDiagnosticHandler,
+    mappingContext: DiagnosticsMappingContext
 ): Diagnostic[] {
+    const document = tsDoc.svelteDocument;
+    const sourceFile = tsDoc.getSourceFile();
     // For svelte-check tsgo, we called api to get all diagnostics instead of calling getDiagnostics for each file separately. So we also need to check parser error or coffeescript files here.
     if (['coffee', 'coffeescript'].includes(document.getLanguageAttribute('script'))) {
         return [];
     }
 
     // Document preprocessing failed, show parser error instead
-    const parserErrorDiag = getParserErrorDiagnostic(tsDoc);
-    if (parserErrorDiag) {
-        return [parserErrorDiag];
-    }
+    // const parserErrorDiag = getParserErrorDiagnostic(sourceFile);
+    // if (parserErrorDiag) {
+    //     return [parserErrorDiag];
+    // }
 
-    const notGenerated = isNotGenerated(tsDoc.getFullText());
+    const notGenerated = isNotGenerated(sourceFile.getFullText());
+
+    const mapToVirtual = mappingContext.ensureVirtualSpan;
 
     const additionalStoreDiagnostics: tsApiSync.Diagnostic[] = [];
     for (const diagnostic of diagnostics) {
@@ -646,17 +700,19 @@ function mapAndFilterDiagnostics(
             !notGenerated(diagnostic) &&
             diagnostic.fileName
         ) {
-            if (isStoreVariableIn$storeDeclaration(tsDoc.getFullText(), diagnostic.pos)) {
-                const storeName = tsDoc.getFullText().substring(diagnostic.pos, diagnostic.end);
+            const virtualSpan = mapToVirtual(diagnostic);
+            if (!virtualSpan) {
+                continue;
+            }
+            if (isStoreVariableIn$storeDeclaration(sourceFile.getFullText(), virtualSpan.pos)) {
+                const storeName = sourceFile
+                    .getFullText()
+                    .substring(virtualSpan.pos, virtualSpan.end);
                 const symbol = tsApiProject.checker.getSymbolAtPosition(
                     diagnostic.fileName,
-                    get$storeOffsetOf$storeDeclaration(tsDoc.getFullText(), diagnostic.pos)
+                    get$storeOffsetOf$storeDeclaration(sourceFile.getFullText(), virtualSpan.pos)
                 );
                 if (!symbol) {
-                    continue;
-                }
-                const sourceFile = tsApiProject.program.getSourceFile(diagnostic.fileName);
-                if (!sourceFile) {
                     continue;
                 }
                 const storeUsages = tsApiProject.checker.getReferencesToSymbolInFile(
@@ -665,16 +721,27 @@ function mapAndFilterDiagnostics(
                 );
                 for (const storeUsage of storeUsages) {
                     const node = storeUsage.resolve(tsApiProject);
-                    if (node) {
-                        additionalStoreDiagnostics.push({
-                            ...diagnostic,
-                            text:
-                                `Cannot use '${storeName}' as a store. '${storeName}' needs to be an object with a subscribe method on it.\n\n` +
-                                diagnostic.text,
-                            pos: getStartOfNode(tsAstModule, node, sourceFile),
-                            end: node.end
-                        });
+                    if (!node) {
+                        continue;
                     }
+                    const span: tsAst.ReadonlyTextRange = {
+                        pos: getStartOfNode(tsAstModule, node, sourceFile),
+                        end: node.end
+                    };
+                    const mapped = tsDoc.mapToOriginalRange(span);
+                    if (mapped?.fidelity !== tsAstModule.SpanMapFidelity.Exact) {
+                        continue;
+                    }
+                    additionalStoreDiagnostics.push({
+                        ...diagnostic,
+                        text:
+                            `Cannot use '${storeName}' as a store. '${storeName}' needs to be an object with a subscribe method on it.\n\n` +
+                            diagnostic.text,
+                        pos: document.offsetAt(mapped.range.start),
+                        end: document.offsetAt(mapped.range.end),
+                        startPosition: mapped.range.start,
+                        endPosition: mapped.range.end
+                    });
                 }
             }
         }
@@ -682,43 +749,77 @@ function mapAndFilterDiagnostics(
     diagnostics.push(...additionalStoreDiagnostics);
 
     diagnostics = diagnostics
-        .filter(notGenerated)
+        // .filter(notGenerated)
         .filter(
-            (diagnostic) => !isUnusedReactiveStatementLabel(tsAstModule, tsApiProject, diagnostic)
+            (diagnostic) =>
+                !isUnusedReactiveStatementLabel(
+                    tsAstModule,
+                    tsApiProject,
+                    diagnostic,
+                    mappingContext
+                )
         )
         .filter(
             (diagnostic) =>
-                !expectedTransitionThirdArgument(tsAstModule, diagnostic, tsDoc, tsApiProject)
+                !expectedTransitionThirdArgument(
+                    tsAstModule,
+                    diagnostic,
+                    sourceFile,
+                    tsApiProject,
+                    mappingContext
+                )
         );
 
-    diagnostics = resolveNoopsInReactiveStatements(tsAstModule, tsApiProject, diagnostics);
+    diagnostics = resolveNoopsInReactiveStatements(
+        tsAstModule,
+        tsApiProject,
+        tsDoc,
+        diagnostics,
+        mappingContext
+    );
 
     const source =
-        tsDoc.scriptKind === ts.ScriptKind.TSX || tsDoc.scriptKind === ts.ScriptKind.TS
+        sourceFile.scriptKind === ts.ScriptKind.TSX || sourceFile.scriptKind === ts.ScriptKind.TS
             ? 'ts'
             : 'js';
-    const mapRange = rangeMapper(tsAstModule, tsApiModule, tsApiProject, tsDoc, document);
     const noFalsePositive = isNoFalsePositive(document, tsDoc);
     const converted: Diagnostic[] = [];
+    const get$$PropsDefWithCache = memoize(() => get$$PropsDef(tsAstModule, sourceFile));
+    const get$$PropsAliasInfoWithCache = memoize(() =>
+        get$$PropsAliasForInfo(
+            tsAstModule,
+            tsApiModule,
+            tsApiProject,
+            get$$PropsDefWithCache,
+            document
+        )
+    );
 
     for (const tsDiag of diagnostics) {
+        const message = flattenDiagnosticMessage(tsDiag);
+        const propsErrorRedirect = movePropsErrorRangeBackIfNecessary(
+            tsAstModule,
+            { message, pos: tsDiag.pos },
+            tsDoc,
+            get$$PropsDefWithCache,
+            get$$PropsAliasInfoWithCache
+        );
         let diagnostic: Diagnostic = {
-            range: { start: tsDoc.positionAt(tsDiag.pos), end: tsDoc.positionAt(tsDiag.end) },
+            range: propsErrorRedirect ?? mappingContext.ensureOriginalRange(tsDiag),
             severity: mapSeverity(tsDiag.category),
             source,
-            message: flattenDiagnosticMessage(tsDiag),
+            message,
             code: tsDiag.code,
             tags: getDiagnosticTag(tsDiag)
         };
-        diagnostic = mapRange(diagnostic);
 
-        moveBindingErrorMessage(tsDiag, tsDoc, diagnostic, document);
+        moveBindingErrorMessage(tsDiag, tsDoc, diagnostic, mappingContext);
 
         if (!hasNoNegativeLines(diagnostic) || !noFalsePositive(diagnostic)) {
             continue;
         }
 
-        diagnostic = adjustIfNecessary(diagnostic, tsDoc.isSvelte5Plus);
+        diagnostic = adjustIfNecessary(diagnostic, document.isSvelte5);
         diagnostic = swapDiagRangeStartEndIfNecessary(diagnostic);
         converted.push(diagnostic);
     }
@@ -734,6 +835,9 @@ function flattenDiagnosticMessage(diag: tsApiSync.Diagnostic, level = 0): string
     let messages = [diag.text];
     for (let i = 0; i < diag.messageChain.length; i++) {
         const chainedDiag = diag.messageChain[i];
+        if (chainedDiag.code === CONTENT_MAPPER_UNMAPPED_CODE) {
+            continue;
+        }
         const indent = '  '.repeat(level + 1);
         messages.push(indent + flattenDiagnosticMessage(chainedDiag, level + 1));
     }
@@ -742,21 +846,22 @@ function flattenDiagnosticMessage(diag: tsApiSync.Diagnostic, level = 0): string
 
 function moveBindingErrorMessage(
     tsDiag: tsApiSync.Diagnostic,
-    tsDoc: SvelteDocumentSnapshot,
+    tsDoc: SourceFileDiagnosticHandler,
     diagnostic: Diagnostic,
-    document: Document
+    mappingContext: DiagnosticsMappingContext
 ) {
-    if (
-        tsDiag.code === DiagnosticCode.TYPE_X_NOT_ASSIGNABLE_TO_TYPE_Y &&
-        tsDiag.pos &&
-        tsDoc.getText(tsDiag.pos, tsDiag.end).endsWith('.$$bindings')
-    ) {
+    if (tsDiag.code !== DiagnosticCode.TYPE_X_NOT_ASSIGNABLE_TO_TYPE_Y) {
+        return;
+    }
+
+    const virtualPos = mappingContext.ensureVirtualSpan(tsDiag);
+    if (virtualPos && tsDoc.getText(virtualPos.pos, virtualPos.end).endsWith('.$$bindings')) {
         let node = tsDoc.svelteNodeAt(diagnostic.range.start);
         while (node && node.type !== 'InlineComponent') {
             node = node.parent!;
         }
         if (node) {
-            let name = tsDoc.getText(tsDiag.end, tsDiag.end + 100);
+            let name = tsDoc.getText(virtualPos.pos, virtualPos.end + 100);
             const quoteIdx = name.indexOf("'");
             name = name.substring(quoteIdx + 1, name.indexOf("'", quoteIdx + 1));
             const binding: any = node.attributes.find(
@@ -783,71 +888,31 @@ function moveBindingErrorMessage(
                         diagnostic.message;
                 }
                 diagnostic.range = {
-                    start: document.positionAt(binding.start),
-                    end: document.positionAt(binding.end)
+                    start: tsDoc.svelteDocument.positionAt(binding.start),
+                    end: tsDoc.svelteDocument.positionAt(binding.end)
                 };
             }
         }
     }
 }
 
-function rangeMapper(
-    tsAstModule: typeof tsAst,
-    tsApiModule: typeof tsApiSync,
-    project: tsApiSync.Project,
-    snapshot: SvelteDocumentSnapshot,
-    document: Document
-): (value: Diagnostic) => Diagnostic {
-    const get$$PropsDefWithCache = memoize(() => get$$PropsDef(tsAstModule, project, snapshot));
-    const get$$PropsAliasInfoWithCache = memoize(() =>
-        get$$PropsAliasForInfo(tsAstModule, tsApiModule, project, get$$PropsDefWithCache, document)
-    );
-
-    return (diagnostic) => {
-        let range = mapRangeToOriginal(snapshot, diagnostic.range);
-        if (range.start.line < 0) {
-            range =
-                movePropsErrorRangeBackIfNecessary(
-                    tsAstModule,
-                    diagnostic,
-                    snapshot,
-                    get$$PropsDefWithCache,
-                    get$$PropsAliasInfoWithCache
-                ) ?? range;
-        }
-
-        if (
-            ([DiagnosticCode.MISSING_PROP, DiagnosticCode.MISSING_PROPS].includes(
-                diagnostic.code as number
-            ) ||
-                (DiagnosticCode.TYPE_X_NOT_ASSIGNABLE_TO_TYPE_Y &&
-                    diagnostic.message.includes("'Properties<"))) &&
-            !hasNonZeroRange({ range })
-        ) {
-            const node = getNodeIfIsInStartTag(document.html, document.offsetAt(range.start));
-            if (node) {
-                // This is a "some prop missing" error on a component -> remap
-                range.start = document.positionAt(node.start + 1);
-                range.end = document.positionAt(node.start + 1 + (node.tag?.length || 1));
-            }
-        }
-
-        return { ...diagnostic, range };
-    };
-}
-
 function findDiagnosticNode(
     tsAstModule: typeof tsAst,
     diagnostic: tsApiSync.Diagnostic,
-    sourceFile: tsAst.SourceFile
+    sourceFile: tsAst.SourceFile,
+    mappingContext: DiagnosticsMappingContext
 ) {
-    const touchingNode = tsAstModule.getTouchingToken(sourceFile, diagnostic.pos);
-    if (touchingNode.end === diagnostic.end) {
+    const virtualPos = mappingContext.ensureVirtualSpan(diagnostic);
+    if (!virtualPos) {
+        return undefined;
+    }
+    const touchingNode = tsAstModule.getTouchingToken(sourceFile, virtualPos.pos);
+    if (touchingNode.end === virtualPos.end) {
         return touchingNode;
     }
     let current: tsAst.Node | undefined = touchingNode.parent;
     while (current.pos === touchingNode.pos) {
-        if (current.end === diagnostic.end) {
+        if (current.end === virtualPos.end) {
             return current;
         }
         current = current.parent;
@@ -857,14 +922,18 @@ function findDiagnosticNode(
 function copyDiagnosticAndChangeNode(
     tsAstModule: typeof tsAst,
     diagnostic: tsApiSync.Diagnostic,
-    sourceFile: tsAst.SourceFile
+    tsDoc: SourceFileDiagnosticHandler
 ) {
     return (node: tsAst.Node): tsApiSync.Diagnostic => {
-        const start = getStartOfNode(tsAstModule, node, sourceFile);
+        const start = getStartOfNode(tsAstModule, node, tsDoc.getSourceFile());
+        const end = node.end;
+        const mapped = tsDoc.mapToOriginalRange({ pos: start, end }).range
         return {
             ...diagnostic,
-            pos: start,
-            end: node.end
+            startPosition: mapped.start,
+            endPosition: mapped.end,
+            pos: tsDoc.svelteDocument.offsetAt(mapped.start),
+            end: tsDoc.svelteDocument.offsetAt(mapped.end)
         };
     };
 }
@@ -880,8 +949,7 @@ function hasNoNegativeLines(diagnostic: Diagnostic): boolean {
 
 const generatedVarRegex = /'\$\$_\w+(\.\$on)?'/;
 
-function isNoFalsePositive(document: Document, tsDoc: SvelteDocumentSnapshot) {
-    const text = document.getText();
+function isNoFalsePositive(document: Document, tsDoc: SourceFileDiagnosticHandler) {
     const usesPug = document.getLanguageAttribute('template') === 'pug';
 
     return (diagnostic: Diagnostic) => {
@@ -904,10 +972,7 @@ function isNoFalsePositive(document: Document, tsDoc: SvelteDocumentSnapshot) {
             return false;
         }
 
-        return (
-            isNoUsedBeforeAssigned(diagnostic, text, tsDoc) &&
-            (!usesPug || isNoPugFalsePositive(diagnostic, document))
-        );
+        return !usesPug || isNoPugFalsePositive(diagnostic, document);
     };
 }
 
@@ -921,23 +986,6 @@ function isNoPugFalsePositive(diagnostic: Diagnostic, document: Document): boole
         diagnostic.code !== DiagnosticCode.NEVER_READ &&
         diagnostic.code !== DiagnosticCode.ALL_IMPORTS_UNUSED
     );
-}
-
-/**
- * Variable used before being assigned, can happen when  you do `export let x`
- * without assigning a value in strict mode. Should not throw an error here
- * but on the component-user-side ("you did not set a required prop").
- */
-function isNoUsedBeforeAssigned(
-    diagnostic: Diagnostic,
-    text: string,
-    tsDoc: SvelteDocumentSnapshot
-): boolean {
-    if (diagnostic.code !== DiagnosticCode.USED_BEFORE_ASSIGNED) {
-        return true;
-    }
-
-    return !tsDoc.hasProp(getTextInRange(diagnostic.range, text));
 }
 
 /**
@@ -989,6 +1037,13 @@ function swapDiagRangeStartEndIfNecessary(diag: Diagnostic): Diagnostic {
  */
 function isNotGenerated(text: string) {
     return (diagnostic: tsApiSync.Diagnostic) => {
+        const hasUnMappableError = diagnostic.messageChain?.find(
+            (message) => message.code === CONTENT_MAPPER_UNMAPPED_CODE
+        );
+        if (!hasUnMappableError) {
+            return true;
+        }
+
         return !isInGeneratedCode(text, diagnostic.pos, diagnostic.end);
     };
 }
@@ -996,7 +1051,8 @@ function isNotGenerated(text: string) {
 function isUnusedReactiveStatementLabel(
     tsApiModule: typeof tsAst,
     project: tsApiSync.Project,
-    diagnostic: tsApiSync.Diagnostic
+    diagnostic: tsApiSync.Diagnostic,
+    mappingContext: DiagnosticsMappingContext
 ) {
     if (diagnostic.code !== DiagnosticCode.UNUSED_LABEL) {
         return false;
@@ -1006,7 +1062,7 @@ function isUnusedReactiveStatementLabel(
     if (!sourceFile) {
         return false;
     }
-    const diagNode = findDiagnosticNode(tsApiModule, diagnostic, sourceFile);
+    const diagNode = findDiagnosticNode(tsApiModule, diagnostic, sourceFile, mappingContext);
     if (!diagNode) {
         return false;
     }
@@ -1034,7 +1090,9 @@ function isUnusedReactiveStatementLabel(
 function resolveNoopsInReactiveStatements(
     tsAstModule: typeof tsAst,
     project: tsApiSync.Project,
-    diagnostics: tsApiSync.Diagnostic[]
+    tsDoc: SourceFileDiagnosticHandler,
+    diagnostics: tsApiSync.Diagnostic[],
+    mappingContext: DiagnosticsMappingContext
 ) {
     const notLet = (node: tsAst.Node) => {
         const declaration = project.checker.getSymbolAtLocation(node)?.valueDeclaration;
@@ -1060,11 +1118,8 @@ function resolveNoopsInReactiveStatements(
             return;
         }
 
-        const sourceFile = fileName && project.program.getSourceFile(fileName);
-        if (!sourceFile) {
-            return;
-        }
-        const diagNode = findDiagnosticNode(tsAstModule, diagnostic, sourceFile);
+        const sourceFile = tsDoc.getSourceFile();
+        const diagNode = findDiagnosticNode(tsAstModule, diagnostic, sourceFile, mappingContext);
         if (!diagNode) {
             return;
         }
@@ -1073,7 +1128,7 @@ function resolveNoopsInReactiveStatements(
             return;
         }
 
-        const copyWorker = copyDiagnosticAndChangeNode(tsAstModule, diagnostic, sourceFile);
+        const copyWorker = copyDiagnosticAndChangeNode(tsAstModule, diagnostic, tsDoc);
         return (
             // for all identifiers in diagnostic node
             gatherIdentifiers(tsAstModule, diagNode)
@@ -1153,17 +1208,7 @@ function get$$PropsAliasForInfo(
     return [rootSymbolName, propsDef] as const;
 }
 
-function get$$PropsDef(
-    tsAstModule: typeof tsAst,
-    project: tsApiSync.Project,
-    snapshot: SvelteDocumentSnapshot
-) {
-    const program = project.program;
-    const sourceFile = program.getSourceFile(toVirtualPath(snapshot));
-    if (!program || !sourceFile) {
-        return undefined;
-    }
-
+function get$$PropsDef(tsAstModule: typeof tsAst, sourceFile: tsAst.SourceFile) {
     const renderFunction = sourceFile.statements.find(
         (statement): statement is tsAst.FunctionDeclaration =>
             tsAstModule.isFunctionDeclaration(statement) &&
@@ -1179,15 +1224,12 @@ function get$$PropsDef(
 
 function movePropsErrorRangeBackIfNecessary(
     tsAstModule: typeof tsAst,
-    diagnostic: Diagnostic,
-    snapshot: SvelteDocumentSnapshot,
+    diagnostic: { message: string; pos: number },
+    tsDoc: SourceFileDiagnosticHandler,
     get$$PropsDefWithCache: () => ReturnType<typeof get$$PropsDef>,
     get$$PropsAliasForWithCache: () => ReturnType<typeof get$$PropsAliasForInfo>
 ): Range | undefined {
-    const possibly$$PropsError = isAfterSvelte2TsxPropsReturn(
-        snapshot.getFullText(),
-        snapshot.offsetAt(diagnostic.range.start)
-    );
+    const possibly$$PropsError = isAfterSvelte2TsxPropsReturn(tsDoc.getFullText(), diagnostic.pos);
     if (!possibly$$PropsError) {
         return;
     }
@@ -1202,16 +1244,15 @@ function movePropsErrorRangeBackIfNecessary(
             propsDef.name,
             propsDef.getSourceFile()
         );
-        const propsStart = snapshot.getOriginalPosition(snapshot.positionAt(generatedPropsStart));
+        const propsStart = tsDoc.mapToOriginalPos(generatedPropsStart);
 
-        if (propsStart) {
-            return {
-                start: propsStart,
-                end: { ...propsStart, character: propsStart.character + '$$Props'.length }
-            };
-        }
-
-        return;
+        return {
+            start: propsStart.position,
+            end: {
+                ...propsStart.position,
+                character: propsStart.position.character + '$$Props'.length
+            }
+        };
     }
 
     const aliasForInfo = get$$PropsAliasForWithCache();
@@ -1221,33 +1262,33 @@ function movePropsErrorRangeBackIfNecessary(
 
     const [aliasFor, propsDef] = aliasForInfo;
     if (diagnostic.message.includes(aliasFor)) {
-        return mapRangeToOriginal(snapshot, {
-            start: snapshot.positionAt(
-                getStartOfNode(tsAstModule, propsDef.name, propsDef.getSourceFile())
-            ),
-            end: snapshot.positionAt(propsDef.name.end)
-        });
+        const start = getStartOfNode(tsAstModule, propsDef.name, propsDef.getSourceFile());
+        const end = propsDef.name.end;
+        const mapped = tsDoc.mapToOriginalRange({ pos: start, end });
+        return mapped.range;
     }
 }
 
 function expectedTransitionThirdArgument(
     tsAstModule: typeof tsAst,
     diagnostic: tsApiSync.Diagnostic,
-    tsDoc: SvelteDocumentSnapshot,
-    project: tsApiSync.Project
+    sourceFile: tsAst.SourceFile,
+    project: tsApiSync.Project,
+    mappingContext: DiagnosticsMappingContext
 ) {
+    if (diagnostic.code !== DiagnosticCode.EXPECTED_N_ARGUMENTS) {
+        return false;
+    }
+
+    const virtualPos = mappingContext.ensureVirtualSpan(diagnostic);
     if (
-        diagnostic.code !== DiagnosticCode.EXPECTED_N_ARGUMENTS ||
-        !tsDoc.getText(0, diagnostic.pos).endsWith('__sveltets_2_ensureTransition(')
+        !virtualPos ||
+        !sourceFile.text.slice(0, virtualPos.pos).endsWith('__sveltets_2_ensureTransition(')
     ) {
         return false;
     }
 
-    const sourceFile = diagnostic.fileName && project.program.getSourceFile(diagnostic.fileName);
-    if (!sourceFile) {
-        return false;
-    }
-    const node = findDiagnosticNode(tsAstModule, diagnostic, sourceFile);
+    const node = findDiagnosticNode(tsAstModule, diagnostic, sourceFile, mappingContext);
     if (!node || !tsAstModule.isIdentifier(node)) {
         return false;
     }

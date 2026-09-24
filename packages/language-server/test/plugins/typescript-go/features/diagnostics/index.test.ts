@@ -35,7 +35,7 @@ const skips = [
 const providerPoolLegacy = new Map<string, SvelteCheckTSGoDiagnosticsProvider>();
 const providerPool = new Map<string, ContentMapperDiagnosticsProvider>();
 
-describe.skip('SvelteCheckTSGoDiagnosticsProvider', function () {
+describe.only('SvelteCheckTSGoDiagnosticsProvider', function () {
     const fixturesDir = path.join(root, 'fixtures');
     executeTests({
         dir: fixturesDir,
@@ -51,7 +51,7 @@ describe.skip('SvelteCheckTSGoDiagnosticsProvider', function () {
     });
 });
 
-describe.only('SvelteCheckTSGoDiagnosticsProvider 2', function () {
+describe.skip('SvelteCheckTSGoDiagnosticsProvider 2', function () {
     const fixturesDir = path.join(root, 'fixtures');
     executeTests({
         dir: fixturesDir,
@@ -137,7 +137,8 @@ async function executeTest(
 function setupService(dir: string, contentMapperMode: boolean) {
     before(async () => {
         const tsconfig = ts.findConfigFile(dir, ts.sys.fileExists, 'tsconfig.json')!;
-        if (providerPool.has(tsconfig)) {
+        const pool = contentMapperMode ? providerPool : providerPoolLegacy;
+        if (pool.has(tsconfig)) {
             return;
         }
         const syncApi = await import('@typescript/native/unstable/sync');

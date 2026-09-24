@@ -151,7 +151,7 @@ export class ContentMapperDiagnosticsProvider implements DiagnosticsProvider {
             this.tsApiModule,
             project,
             diagnostics,
-            new SvelteSourceFileDocument(sourceFile, document)
+            new SvelteSourceFileDocument(this.tsAstModule, sourceFile, document)
         );
     }
 
@@ -226,6 +226,7 @@ export class ContentMapperDiagnosticsProvider implements DiagnosticsProvider {
                 continue;
             }
             const sourceFileDoc = new SvelteSourceFileDocument(
+                this.tsAstModule,
                 sourceFile,
                 this.createDocument(fileName, sourceFile.originalText)
             );
