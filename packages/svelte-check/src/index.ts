@@ -639,7 +639,9 @@ parseOptions(async (opts) => {
                         'If the problem persists, please report an issue in https://github.com/sveltejs/language-tools/issues.'
                 );
             }
-            svelteCheckOptions.experimental = { tsgo: { apiModule, astModule } };
+
+            const fullVersion = pkg.major + '.' + pkg.minor + '.' + pkg.patch;
+            svelteCheckOptions.experimental = { tsgo: { apiModule, astModule, tsVersion: fullVersion } };
         }
 
         const useVirtualFiles = opts.incremental || opts.tsgo;

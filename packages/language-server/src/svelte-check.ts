@@ -78,6 +78,7 @@ export interface SvelteCheckOptions {
         tsgo: {
             apiModule: unknown;
             astModule: unknown;
+            tsVersion: string;
         };
     };
 }
@@ -146,14 +147,16 @@ export class SvelteCheck {
         if (shouldRegister('js') || options.tsconfig) {
             const workspaceUris = [pathToUrl(workspacePath)];
             if (options.experimental?.tsgo && options.tsconfig) {
-                const { apiModule, astModule } = options.experimental.tsgo as {
+                const { apiModule, astModule, tsVersion } = options.experimental.tsgo as {
                     apiModule: typeof tsApiSync;
                     astModule: typeof tsAst;
+                    tsVersion: string;
                 };
                 if (!apiModule.API || !('ScriptKind' in astModule)) {
                     throw new Error('Unsupported typescript-go version');
                 }
                 this.tsGoDiagnosticsProvider = new SvelteCheckTSGoDiagnosticsProvider(
+                    tsVersion,
                     apiModule,
                     astModule,
                     options.tsconfig,
@@ -465,6 +468,7 @@ export class SvelteCheck {
     }
 
     private async getDiagnosticsForTsconfigTsGo() {
+        // TODO return a friendly error once legacy mode is removed, but contentMapper not configured
         if (!this.tsGoDiagnosticsProvider) {
             throw new Error(
                 'Cannot get diagnostics for tsconfig without TSGo diagnostics provider'

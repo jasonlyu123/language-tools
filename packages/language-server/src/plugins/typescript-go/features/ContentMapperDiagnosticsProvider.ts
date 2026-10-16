@@ -1,4 +1,3 @@
-import type { FileSystem } from '@typescript/native/unstable/fs' with { 'resolution-mode': 'import' };
 import fs from 'node:fs';
 import { dirname } from 'node:path';
 import path from 'path';
