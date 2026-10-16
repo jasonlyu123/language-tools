@@ -11,13 +11,18 @@
         /**For testing import json file*/
         "resolveJsonModule": true
     },
+    "include": [
+        "**/*",
+        // This is needed because "**" doesn't include dot folders
+        "./.svelte-kit/**/*"
+    ],
     "exclude": [
         /**For testing exclude */
         "./dist"
     ],
     "contentMappers": [
         {
-            "package": "svelte-typescript-content-mapper",
+            "package": "@sveltejs/ts-content-mapper",
             "extensions": [".svelte"]
         }
     ]

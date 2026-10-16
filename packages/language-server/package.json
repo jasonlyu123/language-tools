@@ -50,7 +50,7 @@
         "sinon": "^11.0.0",
         "ts-node": "^10.0.0",
         "typescript": "^6.0.3",
-        "svelte-typescript-content-mapper": "workspace:^"
+        "@sveltejs/ts-content-mapper": "workspace:^"
     },
     "dependencies": {
         "@jridgewell/trace-mapping": "^0.3.25",
@@ -63,10 +63,11 @@
         "globrex": "^0.1.2",
         "prettier": "~3.3.3",
         "prettier-plugin-svelte": "^3.5.0",
+        "prettier-plugin-svelte4": "npm:prettier-plugin-svelte@^4.0.0",
         "svelte": "^4.2.19",
         "svelte2tsx": "workspace:~",
         "typescript-auto-import-cache": "^0.3.6",
-        "vscode-css-languageservice": "~6.3.5",
+        "vscode-css-languageservice": "~6.3.10",
         "vscode-html-languageservice": "~5.4.0",
         "vscode-languageserver": "9.0.1",
         "vscode-languageserver-protocol": "3.17.5",

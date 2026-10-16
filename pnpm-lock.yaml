@@ -60,6 +60,9 @@ importers:
       prettier-plugin-svelte:
         specifier: ^3.5.0
         version: 3.5.0(prettier@3.3.3)(svelte@4.2.20)
+      prettier-plugin-svelte4:
+        specifier: npm:prettier-plugin-svelte@^4.0.0
+        version: prettier-plugin-svelte@4.1.1(prettier@3.3.3)(svelte@4.2.20)
       svelte:
         specifier: ^4.2.19
         version: 4.2.20
@@ -70,8 +73,8 @@ importers:
         specifier: ^0.3.6
         version: 0.3.6
       vscode-css-languageservice:
-        specifier: ~6.3.5
-        version: 6.3.5
+        specifier: ~6.3.10
+        version: 6.3.10
       vscode-html-languageservice:
         specifier: ~5.4.0
         version: 5.4.0
@@ -88,6 +91,9 @@ importers:
         specifier: ~3.1.0
         version: 3.1.0
     devDependencies:
+      '@sveltejs/ts-content-mapper':
+        specifier: workspace:^
+        version: link:../typescript-content-mapper
       '@types/estree':
         specifier: ^0.0.42
         version: 0.0.42
@@ -115,9 +121,6 @@ importers:
       sinon:
         specifier: ^11.0.0
         version: 11.1.2
-      svelte-typescript-content-mapper:
-        specifier: workspace:^
-        version: link:../typescript-content-mapper
       ts-node:
         specifier: ^10.0.0
         version: 10.9.1(@types/node@18.19.46)(typescript@6.0.3)
@@ -1766,6 +1769,13 @@ packages:
       prettier: ^3.0.0
       svelte: ^3.2.0 || ^4.0.0-next.0 || ^5.0.0-next.0
 
+  prettier-plugin-svelte@4.1.1:
+    resolution: {integrity: sha512-wXvbXMjSvb4C9ENWTHXyd+ihakKCsJ6rJhLP6/8HFNj4GkZr48jqL9PoKsl2sk7SyCZRTnJ7O2TTowUpOxP/KA==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      prettier: ^3.0.0
+      svelte: ^5.0.0
+
   prettier@2.8.8:
     resolution: {integrity: sha512-tdN8qQGvNjw4CHbY+XXk0JgCXn9QiF21a55rBe5LJAU+kDyC4WQn4+awm2Xfk2lQMk5fKup9XgzTZtGkjBdP9Q==}
     engines: {node: '>=10.13.0'}
@@ -2128,8 +2138,8 @@ packages:
       jsdom:
         optional: true
 
-  vscode-css-languageservice@6.3.5:
-    resolution: {integrity: sha512-ehEIMXYPYEz/5Svi2raL9OKLpBt5dSAdoCFoLpo0TVFKrVpDemyuQwS3c3D552z/qQCg3pMp8oOLMObY6M3ajQ==}
+  vscode-css-languageservice@6.3.10:
+    resolution: {integrity: sha512-eq5N9Er3fC4vA9zd9EFhyBG90wtCCuXgRSpAndaOgXMh1Wgep5lBgRIeDgjZBW9pa+332yC9+49cZMW8jcL3MA==}
 
   vscode-html-languageservice@5.4.0:
     resolution: {integrity: sha512-9/cbc90BSYCghmHI7/VbWettHZdC7WYpz2g5gBK6UDUI1MkZbM773Q12uAYJx9jzAiNHPpyo6KzcwmcnugncAQ==}
@@ -3568,6 +3578,11 @@ snapshots:
       prettier: 3.3.3
       svelte: 4.2.20
 
+  prettier-plugin-svelte@4.1.1(prettier@3.3.3)(svelte@4.2.20):
+    dependencies:
+      prettier: 3.3.3
+      svelte: 4.2.20
+
   prettier@2.8.8: {}
 
   prettier@3.3.3: {}
@@ -3943,7 +3958,7 @@ snapshots:
       - tsx
       - yaml
 
-  vscode-css-languageservice@6.3.5:
+  vscode-css-languageservice@6.3.10:
     dependencies:
       '@vscode/l10n': 0.0.18
       vscode-languageserver-textdocument: 1.0.12
