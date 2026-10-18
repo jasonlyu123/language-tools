@@ -1,6 +1,3 @@
-import type { FileSystem } from '@typescript/native/unstable/fs' with { 'resolution-mode': 'import' };
-import fs from 'node:fs';
-import { dirname } from 'node:path';
 import path from 'path';
 import { internalHelpers } from 'svelte2tsx';
 import ts from 'typescript';
@@ -12,21 +9,10 @@ import {
     DocumentDiagnosticReport,
     Range
 } from 'vscode-languageserver';
-import { getPackageInfo, importSvelte } from '../../../importPackage';
-import {
-    Document,
-    getLineOffsets,
-    getNodeIfIsInStartTag,
-    getTextInRange,
-    isRangeInTag,
-    mapRangeToOriginal,
-    positionAt
-} from '../../../lib/documents';
+import { Document, getLineOffsets, isRangeInTag, positionAt } from '../../../lib/documents';
 import { configLoader } from '../../../lib/documents/configLoader';
 import { FileMap } from '../../../lib/documents/fileCollection';
-import { Logger } from '../../../logger';
 import {
-    clamp,
     memoize,
     normalizePath,
     passMap,
@@ -37,8 +23,7 @@ import { DiagnosticsProvider } from '../../interfaces';
 import {
     DocumentSnapshot,
     JSOrTSDocumentSnapshot,
-    SvelteDocumentSnapshot,
-    SvelteSnapshotOptions
+    SvelteDocumentSnapshot
 } from '../../typescript/DocumentSnapshot';
 import { DiagnosticCode } from '../../typescript/features/DiagnosticsProvider';
 import {
@@ -48,42 +33,48 @@ import {
     isStoreVariableIn$storeDeclaration
 } from '../../typescript/features/utils';
 import { isAttributeName, isEventHandler } from '../../typescript/svelte-ast-utils';
-import { hasNonZeroRange, isSvelteFilePath, mapSeverity } from '../../typescript/utils';
-import { tsApiSync, tsAst } from '../types';
+import { isSvelteFilePath, mapSeverity } from '../../typescript/utils';
+import { SourceFileDiagnosticContext, SvelteSourceFileDocument } from '../SvelteSourceFileDocument';
+import { tsApiSync, tsAst, tsFs } from '../types';
+import {
+    LegacyDiagnosticApiService,
+    SvelteSnapshotDiagnosticsContext,
+    toRealPath,
+    toVirtualPath
+} from './LegacyDiagnosticProvider';
 import {
     gatherIdentifiers,
     getStartOfNode,
     isInReactiveStatement,
     isReactiveStatement
 } from './utils';
-import { SourceFileDiagnosticHandler } from '../SvelteSourceFileDocument';
-import { SvelteSnapshotDiagnosticsHandler } from './LegacyDiagnosticProvider';
 
-const VIRTUAL_SUFFIX = '_virtual__';
-const SVELTE_EXT_LENGTH = '.svelte'.length;
-const D_SVELTE_TS_EXTENSION = '.d.svelte.ts';
-const D_SVELTE_TS_LENGTH = D_SVELTE_TS_EXTENSION.length;
-const SVELTE_DTS_EXTENSION = '.svelte.d.ts';
+const CONTENT_MAPPER_UNMAPPED_CODE = 18074;
 
-const CONTENT_MAPPER_UNMAPPED_CODE = 100030;
+export interface TSModules {
+    apiModule: typeof tsApiSync;
+    astModule: typeof tsAst;
+    fsModule: typeof tsFs;
+    tsVersion: string;
+}
 
 export class SvelteCheckTSGoDiagnosticsProvider implements DiagnosticsProvider {
     private readonly api: tsApiSync.API;
     private readonly tsApiModule: typeof tsApiSync;
+    private readonly tsFsModule: typeof tsFs;
     private readonly files: FileMap<DocumentSnapshot> = new FileMap();
-    private readonly virtualFiles: FileMap<string> = new FileMap();
     private readonly tsAstModule: typeof tsAst;
-    private readonly virtualTsconfigPath: string;
-    private readonly ambientTypesSource: string;
-    private readonly snapshotOptions: SvelteSnapshotOptions;
     private readonly tsconfigPath: string;
     /**
      * files is currently empty
      */
     private projectConfig: ts.ParsedCommandLine;
     private pendingConfigLoading: Promise<void> | undefined;
+    private readonly legacyService: LegacyDiagnosticApiService | undefined;
+    private readonly useStableApi: boolean;
 
     private createDocument: (filePath: string, content: string) => Document;
+    private snapshot: tsApiSync.Snapshot | undefined;
 
     private pendingChanges = {
         created: new Set<string>(),
@@ -92,39 +83,59 @@ export class SvelteCheckTSGoDiagnosticsProvider implements DiagnosticsProvider {
     };
 
     constructor(
-        apiModule: typeof tsApiSync,
-        tsAstModule: typeof tsAst,
+        modules: TSModules,
         tsconfigPath: string,
         ambientTypesSource: string,
-        createDocument: (filePath: string, content: string) => Document
+        createDocument: (filePath: string, content: string) => Document,
+        // test only
+        contentMapperMode: 'auto' | boolean = 'auto'
     ) {
-        this.tsApiModule = apiModule;
-        this.tsAstModule = tsAstModule;
+        this.tsApiModule = modules.apiModule;
+        this.tsAstModule = modules.astModule;
+        this.tsFsModule = modules.fsModule;
         this.tsconfigPath = tsconfigPath;
-        this.virtualTsconfigPath = path.join(
-            path.dirname(tsconfigPath),
-            `tsconfig_virtual_config.json`
-        );
+        const { tsVersion } = modules;
         this.createDocument = createDocument;
-        this.ambientTypesSource = ambientTypesSource;
-        const sveltePackage = importSvelte(tsconfigPath);
-        this.snapshotOptions = {
-            parse: sveltePackage.parse,
-            transformOnTemplateError: false,
-            typingsNamespace: 'svelteHTML',
-            version: sveltePackage.VERSION,
-            emitJsDoc: true
-        };
+        const [major, minor] = (tsVersion || '7.0').split('.').map(Number);
+        this.useStableApi = major > 7 || (major === 7 && minor >= 1);
 
-        this.api = new apiModule.API({
-            fs: this.createFsProxy()
-        });
         this.projectConfig = this.parseConfig();
-        if (this.projectConfig?.raw.svelteOptions?.namespace) {
-            this.snapshotOptions.typingsNamespace = this.projectConfig.raw.svelteOptions.namespace;
+        const contentMapperConfigured =
+            typeof this.projectConfig.raw.contentMappers === 'object' &&
+            Array.isArray(this.projectConfig.raw.contentMappers) &&
+            this.projectConfig.raw.contentMappers.find((mapper: { extensions: string[] }) =>
+                mapper.extensions.includes('.svelte')
+            );
+
+        let useContentMapper: boolean;
+        if (contentMapperMode === 'auto') {
+            useContentMapper = !contentMapperConfigured;
+        } else {
+            if (contentMapperMode && !contentMapperConfigured) {
+                console.warn(
+                    'Content mapper mode is enabled but no content mapper for .svelte files is configured in ' +
+                        tsconfigPath
+                );
+            }
+            useContentMapper = contentMapperMode;
         }
+
+        if (!useContentMapper) {
+            this.legacyService = new LegacyDiagnosticApiService(
+                this.projectConfig,
+                tsconfigPath,
+                ambientTypesSource,
+                this.createDocument,
+                this.files
+            );
+        }
+
+        this.api = new this.tsApiModule.API({
+            fs: this.createFsProxy(),
+            runExternalCode: useContentMapper
+        });
+
         this.pendingConfigLoading = configLoader.loadConfigs(path.dirname(tsconfigPath));
-        this.writeVirtualTsconfig();
     }
 
     async getDiagnostics(
@@ -141,55 +152,60 @@ export class SvelteCheckTSGoDiagnosticsProvider implements DiagnosticsProvider {
         }
 
         const tsDoc = this.files.get(normalizePath(filePath));
+        let path: string;
+        if (tsDoc) {
+            if (!tsDoc || !(tsDoc instanceof SvelteDocumentSnapshot)) {
+                return [];
+            }
 
-        if (!tsDoc || !(tsDoc instanceof SvelteDocumentSnapshot)) {
-            return [];
+            if (
+                ['coffee', 'coffeescript'].includes(document.getLanguageAttribute('script')) ||
+                cancellationToken?.isCancellationRequested
+            ) {
+                return [];
+            }
+            // Document preprocessing failed, show parser error instead
+            const parserErrorDiag = getParserErrorDiagnostic(tsDoc);
+            if (parserErrorDiag) {
+                return [parserErrorDiag];
+            }
+
+            path = toVirtualPath(tsDoc);
+        } else {
+            path = normalizePath(filePath);
         }
 
-        if (
-            ['coffee', 'coffeescript'].includes(document.getLanguageAttribute('script')) ||
-            cancellationToken?.isCancellationRequested
-        ) {
-            return [];
-        }
-
-        // Document preprocessing failed, show parser error instead
-        const parserErrorDiag = getParserErrorDiagnostic(tsDoc);
-        if (parserErrorDiag) {
-            return [parserErrorDiag];
-        }
-
-        const virtualPath = toVirtualPath(tsDoc);
         const diagnostics: tsApiSync.Diagnostic[] = [];
         const program = project.program;
-        // TODO remove this check once the API is stable
-        if (typeof this.api.batch === 'function') {
+        if (this.useStableApi) {
             this.api
                 .batch(
-                    program.getSyntacticDiagnostics.gen(virtualPath),
-                    program.getSuggestionDiagnostics.gen(virtualPath),
-                    program.getSemanticDiagnostics.gen(virtualPath)
+                    program.getSyntacticDiagnostics.gen(path),
+                    program.getSuggestionDiagnostics.gen(path),
+                    program.getSemanticDiagnostics.gen(path)
                 )
                 .forEach((diag) => diagnostics.push(...diag));
         } else {
-            diagnostics.push(...(program.getSyntacticDiagnostics(virtualPath) || []));
-            diagnostics.push(...(program.getSuggestionDiagnostics(virtualPath) || []));
-            diagnostics.push(...(program.getSemanticDiagnostics(virtualPath) || []));
+            diagnostics.push(...(program.getSyntacticDiagnostics(path) || []));
+            diagnostics.push(...(program.getSuggestionDiagnostics(path) || []));
+            diagnostics.push(...(program.getSemanticDiagnostics(path) || []));
         }
 
-        const sourceFile = project.program.getSourceFile(virtualPath);
+        const sourceFile = project.program.getSourceFile(path);
         if (!sourceFile) {
-            throw new Error(`Source file not found for ${virtualPath}`);
+            throw new Error(`Source file not found for ${path}`);
         }
-        const handler = new SvelteSnapshotDiagnosticsHandler(this.tsAstModule, tsDoc, sourceFile!);
+        const context = tsDoc
+            ? new SvelteSnapshotDiagnosticsContext(this.tsAstModule, tsDoc, sourceFile)
+            : new SvelteSourceFileDocument(this.tsAstModule, sourceFile, document);
 
         return mapAndFilterDiagnostics(
             this.tsAstModule,
             this.tsApiModule,
             project,
             diagnostics,
-            handler,
-            this.createMappingContext(handler)
+            context,
+            this.createMappingContext(context)
         );
     }
 
@@ -198,18 +214,47 @@ export class SvelteCheckTSGoDiagnosticsProvider implements DiagnosticsProvider {
             await this.pendingConfigLoading;
             this.pendingConfigLoading = undefined;
         }
-        const snapshot = this.api.updateSnapshot({
-            openProject: this.virtualTsconfigPath,
-            fileChanges: {
-                created: Array.from(this.pendingChanges.created),
-                changed: Array.from(this.pendingChanges.changed),
-                deleted: Array.from(this.pendingChanges.deleted)
+
+        const configPath = this.legacyService?.virtualTsconfigPath ?? this.tsconfigPath;
+
+        const changes = {
+            created: Array.from(this.pendingChanges.created),
+            changed: Array.from(this.pendingChanges.changed),
+            deleted: Array.from(this.pendingChanges.deleted)
+        };
+
+        let snapshot: tsApiSync.Snapshot;
+        if (this.useStableApi) {
+            if (
+                this.snapshot &&
+                changes.created.length === 0 &&
+                changes.changed.length === 0 &&
+                changes.deleted.length === 0
+            ) {
+                snapshot = this.snapshot;
+            } else {
+                snapshot = this.api.createSnapshot({
+                    openProjects: [configPath],
+                    fileNotifications: changes
+                });
             }
-        });
+            this.snapshot = snapshot;
+        } else {
+            // @ts-expect-error typescript < 7.1
+            snapshot = this.api.updateSnapshot({
+                openProject: configPath,
+                fileChanges: changes
+            });
+        }
         this.pendingChanges.created.clear();
         this.pendingChanges.changed.clear();
         this.pendingChanges.deleted.clear();
-        const project = snapshot.getProject(this.virtualTsconfigPath);
+        if (this.useStableApi) {
+            const project = snapshot.getConfiguredProject(configPath);
+            return project;
+        }
+        // @ts-expect-error typescript < 7.1
+        const project = snapshot.getProject(configPath);
         return project;
     }
 
@@ -233,7 +278,8 @@ export class SvelteCheckTSGoDiagnosticsProvider implements DiagnosticsProvider {
         }
 
         const result: { filePath: string; diagnostics: Diagnostic[]; text: string }[] = [];
-        const virtualConfigPath = normalizePath(this.virtualTsconfigPath);
+        const configPath = this.legacyService?.virtualTsconfigPath ?? this.tsconfigPath;
+        const virtualConfigPath = normalizePath(configPath);
         for (const [fileName, diags] of byFile) {
             const tsDoc = this.files.get(normalizePath(fileName));
             if (!tsDoc) {
@@ -252,7 +298,7 @@ export class SvelteCheckTSGoDiagnosticsProvider implements DiagnosticsProvider {
                     // should not happen, but if it does, we skip this file
                     continue;
                 }
-                const handler = new SvelteSnapshotDiagnosticsHandler(
+                const handler = new SvelteSnapshotDiagnosticsContext(
                     this.tsAstModule,
                     tsDoc,
                     sourceFile
@@ -329,35 +375,23 @@ export class SvelteCheckTSGoDiagnosticsProvider implements DiagnosticsProvider {
     }
 
     watchUpdate(doc: { text: string; uri: string }, kind: 'created' | 'changed' | 'deleted') {
-        const filePath = urlToPath(doc.uri) || '';
-        const normalizedPath = normalizePath(filePath);
-        if (kind === 'created') {
-            if (isSvelteFilePath(normalizedPath)) {
-                // trigger project files invalidation should be enough
-                this.pendingChanges.created.add(
-                    changeExtension(normalizedPath, D_SVELTE_TS_EXTENSION)
-                );
-            } else {
+        if (this.legacyService) {
+            this.legacyService.watchUpdate(doc, kind, this.pendingChanges);
+        } else {
+            const filePath = urlToPath(doc.uri) || '';
+            const normalizedPath = normalizePath(filePath);
+            if (kind === 'created') {
                 this.pendingChanges.created.add(normalizedPath);
-            }
-        } else if (kind === 'deleted') {
-            this.pendingChanges.deleted.add(normalizedPath);
-        } else if (kind === 'changed') {
-            let changedPath = normalizedPath;
-            if (this.files.has(normalizedPath)) {
-                const newSnapshot = DocumentSnapshot.fromFilePath(
-                    filePath,
-                    this.createDocument,
-                    this.snapshotOptions,
-                    ts.sys
-                );
-                if (newSnapshot instanceof SvelteDocumentSnapshot) {
-                    changedPath = toVirtualPath(newSnapshot);
+            } else if (kind === 'deleted') {
+                this.pendingChanges.deleted.add(normalizedPath);
+            } else if (kind === 'changed') {
+                let changedPath = normalizedPath;
+                if (this.files.has(normalizedPath)) {
+                    const newSnapshot = DocumentSnapshot.fromNonSvelteFilePath(filePath, ts.sys);
+                    this.files.set(normalizedPath, newSnapshot);
                 }
-                this.virtualFiles.set(changedPath, newSnapshot.getFullText());
-                this.files.set(normalizedPath, newSnapshot);
+                this.pendingChanges.changed.add(changedPath);
             }
-            this.pendingChanges.changed.add(changedPath);
         }
     }
 
@@ -365,9 +399,29 @@ export class SvelteCheckTSGoDiagnosticsProvider implements DiagnosticsProvider {
         return this.projectConfig;
     }
 
-    private createFsProxy(): Required<
-        Pick<FileSystem, 'readFile' | 'fileExists' | 'getAccessibleEntries'>
-    > {
+    private createFsProxy(): tsFs.FileSystemCallbacks {
+        // optional chaining for supporting older version.
+        // For older version, undefined means using the default system callbacks. So this setup is type safe and also compatible with both older and newer versions.
+
+        const serverFS = this.tsFsModule?.serverFS;
+        const defaultSys: tsFs.FileSystemCallbacks = {
+            fileExists: serverFS?.useOS,
+            directoryExists: serverFS?.useOS,
+            getAccessibleEntries: serverFS?.useOS,
+            stat: serverFS?.useOS,
+            realpath: serverFS?.useOS,
+            writeFile: serverFS?.useOS,
+            removeFile: serverFS?.useOS,
+            readFile: serverFS?.useOS
+        };
+        if (this.legacyService) {
+            const legacyFsProxy = this.legacyService.createFsProxy(serverFS);
+            return {
+                ...defaultSys,
+                ...legacyFsProxy
+            };
+        }
+
         const service = this;
         const kitFiles: Parameters<typeof internalHelpers.isKitFile>[1] = {
             serverHooksPath: 'src/hooks.client',
@@ -377,45 +431,9 @@ export class SvelteCheckTSGoDiagnosticsProvider implements DiagnosticsProvider {
         };
 
         return {
-            getAccessibleEntries(directory: string) {
-                const realFiles: string[] = [];
-                const directories: string[] = [];
-                const resultFiles: string[] = [];
-                try {
-                    const entries = fs.readdirSync(directory, { withFileTypes: true });
-                    for (const entry of entries) {
-                        if (entry.isFile()) {
-                            realFiles.push(entry.name);
-                        } else if (entry.isDirectory()) {
-                            directories.push(entry.name);
-                        } else if (entry.isSymbolicLink()) {
-                            const fullPath = path.join(directory, entry.name);
-                            const stats = fs.statSync(fs.realpathSync(fullPath));
-                            if (stats.isFile()) {
-                                realFiles.push(entry.name);
-                            } else if (stats.isDirectory()) {
-                                directories.push(entry.name);
-                            }
-                        }
-                    }
-                    for (const file of realFiles) {
-                        addFileEntry(path.join(directory, file), realFiles, resultFiles);
-                    }
-                    return {
-                        files: resultFiles,
-                        directories
-                    };
-                } catch (error) {
-                    Logger.error(`Error reading directory ${directory}:`, error);
-                    return undefined;
-                }
-            },
+            ...defaultSys,
             readFile(path: string) {
                 const normalizedPath = normalizePath(path);
-                const virtualEntry = service.virtualFiles.get(normalizedPath);
-                if (virtualEntry !== undefined) {
-                    return virtualEntry;
-                }
 
                 if (normalizedPath.endsWith('node_modules/svelte/types/ambient.d.ts')) {
                     return '';
@@ -425,77 +443,20 @@ export class SvelteCheckTSGoDiagnosticsProvider implements DiagnosticsProvider {
                     normalizedPath.endsWith('node_modules/svelte/types/index.d.ts') ||
                     internalHelpers.isKitFile(normalizedPath, kitFiles)
                 ) {
-                    const snapshot = DocumentSnapshot.fromFilePath(
-                        normalizedPath,
-                        service.createDocument,
-                        service.snapshotOptions,
-                        ts.sys
-                    );
+                    const snapshot = DocumentSnapshot.fromNonSvelteFilePath(normalizedPath, ts.sys);
                     service.files.set(normalizedPath, snapshot);
                     return snapshot.getFullText();
                 }
 
-                // undefined to signal api to read from disk by itself
-                return undefined;
-            },
-            fileExists(filePath: string) {
-                const virtualFiles = service.virtualFiles;
-
-                if (
-                    filePath.includes(VIRTUAL_SUFFIX) &&
-                    virtualFiles.has(normalizePath(filePath))
-                ) {
-                    return true;
-                }
-
-                if (filePath.endsWith(D_SVELTE_TS_EXTENSION)) {
-                    if (virtualFiles.has(normalizePath(filePath)) || fs.existsSync(filePath)) {
-                        return true;
-                    }
-
-                    const withoutExtension = filePath.slice(0, -D_SVELTE_TS_LENGTH);
-                    const svelteDtsPath = withoutExtension + SVELTE_DTS_EXTENSION;
-                    if (fs.existsSync(svelteDtsPath)) {
-                        service.addDtsRedirect(filePath, path.basename(svelteDtsPath));
-                        return true;
-                    }
-                    const targetSvelteFile = withoutExtension + '.svelte';
-                    if (fs.existsSync(targetSvelteFile)) {
-                        const virtualBaseName = service.addVirtualSvelteFile(targetSvelteFile);
-                        service.addDtsRedirect(filePath, virtualBaseName);
-                        return true;
-                    }
-                }
-
-                // undefined to signal api to check existence by itself
-                return undefined;
+                return serverFS?.useOS;
             }
+
+            // If we can redirect .svelte.d.ts to .d.svelte.ts in LSP then add a fileExists proxy.
         };
-
-        function addFileEntry(fullPath: string, realFiles: string[], resultFiles: string[]) {
-            const name = path.basename(fullPath);
-            if (!fullPath.endsWith('.svelte')) {
-                resultFiles.push(name);
-                return;
-            }
-
-            const virtualBaseName = service.addVirtualSvelteFile(fullPath);
-            resultFiles.push(virtualBaseName);
-            const dSvelteTsPath = changeExtension(fullPath, D_SVELTE_TS_EXTENSION);
-            const dSvelteTsName = path.basename(dSvelteTsPath);
-            if (realFiles.includes(dSvelteTsName)) {
-                return;
-            }
-            const svelteDtsName = changeExtension(name, SVELTE_DTS_EXTENSION);
-            const dSvelteTsTarget = realFiles.includes(svelteDtsName)
-                ? svelteDtsName
-                : virtualBaseName;
-            service.addDtsRedirect(dSvelteTsPath, dSvelteTsTarget);
-            resultFiles.push(dSvelteTsName);
-        }
     }
 
     private parseConfig() {
+        // TODO use ts7 api when svelte2tsx can work without ts6
         const commandLine = ts.parseJsonSourceFileConfigFileContent(
             ts.parseJsonText(this.tsconfigPath, ts.sys.readFile(this.tsconfigPath) || ''),
             {
@@ -508,79 +469,6 @@ export class SvelteCheckTSGoDiagnosticsProvider implements DiagnosticsProvider {
             path.dirname(this.tsconfigPath)
         );
         return commandLine;
-    }
-
-    private writeVirtualTsconfig() {
-        const commandLine = this.projectConfig;
-        const tsconfigPath = this.tsconfigPath;
-        const sveltePackageInfo = getPackageInfo('svelte', this.virtualTsconfigPath);
-
-        let svelteTsPath: string;
-        try {
-            // For when svelte2tsx/svelte-check is part of node_modules, for example VS Code extension
-            svelteTsPath = dirname(require.resolve(this.ambientTypesSource));
-        } catch (e) {
-            // Fall back to dirname
-            svelteTsPath = __dirname;
-        }
-
-        const svelteTsxFiles = internalHelpers.get_global_types(
-            ts.sys,
-            sveltePackageInfo.version.major === 3,
-            sveltePackageInfo.path,
-            svelteTsPath,
-            undefined
-        );
-
-        const filesConfig = commandLine.raw.files;
-        const rebasedFiles: string[] = [];
-        if (filesConfig) {
-            for (const file of filesConfig) {
-                if (file.endsWith('.svelte')) {
-                    const virtualBaseName = this.addVirtualSvelteFile(
-                        path.join(path.dirname(tsconfigPath), file)
-                    );
-                    rebasedFiles.push(virtualBaseName);
-                    // let fileExists handle the .d.svelte.ts redirection
-                } else {
-                    rebasedFiles.push(file);
-                }
-            }
-        }
-        const virtualTsConfigContent = JSON.stringify({
-            extends: './' + path.basename(tsconfigPath),
-            compilerOptions: { allowArbitraryExtensions: true, noEmit: true },
-            files: rebasedFiles.concat(svelteTsxFiles),
-            // otherwise only "files" will be included and not the default "everything"
-            include: commandLine.raw.include ? undefined : ['**/*']
-        });
-        this.virtualFiles.set(normalizePath(this.virtualTsconfigPath), virtualTsConfigContent);
-    }
-
-    private addDtsRedirect(dSvelteTsPath: string, targetFileName: string) {
-        const specifierFileName = targetFileName.endsWith(SVELTE_DTS_EXTENSION)
-            ? targetFileName.replace(SVELTE_DTS_EXTENSION, '.svelte.js')
-            : changeExtension(targetFileName, '.js');
-        const dtsImportPath = './' + specifierFileName;
-        const dtsContent = `export { default } from "${dtsImportPath}";\nexport * from "${dtsImportPath}";\n`;
-        this.virtualFiles.set(normalizePath(dSvelteTsPath), dtsContent);
-    }
-
-    private addVirtualSvelteFile(filePath: string) {
-        const svelteFile = DocumentSnapshot.fromFilePath(
-            filePath,
-            this.createDocument,
-            this.snapshotOptions,
-            ts.sys
-        );
-        const normalizedPath = normalizePath(filePath);
-        this.files.set(normalizedPath, svelteFile);
-
-        const virtualPath = toVirtualPath(svelteFile);
-        this.virtualFiles.set(virtualPath, svelteFile.getFullText());
-        const virtualBasename = path.basename(virtualPath);
-
-        return virtualBasename;
     }
 
     private covertDiagnosticsForUnopenedFile(
@@ -610,27 +498,63 @@ export class SvelteCheckTSGoDiagnosticsProvider implements DiagnosticsProvider {
         return diagnostics.filter(dedupDiagnostics());
     }
 
-    private createMappingContext(handler: SourceFileDiagnosticHandler): DiagnosticsMappingContext {
+    private createMappingContext(context: SourceFileDiagnosticContext): DiagnosticsMappingContext {
+        if (this.legacyService) {
+            return {
+                ensureVirtualSpan: (diagnostic: tsApiSync.Diagnostic) => {
+                    return diagnostic;
+                },
+                ensureOriginalRange: (diagnostic: tsApiSync.Diagnostic) => {
+                    return context.mapToOriginalRange({
+                        pos: diagnostic.pos,
+                        end: diagnostic.end
+                    }).range;
+                }
+            };
+        }
         return {
             ensureVirtualSpan: (diagnostic: tsApiSync.Diagnostic) => {
-                return diagnostic;
+                if (rangeIsVirtual(diagnostic)) {
+                    return diagnostic;
+                }
+                const sourceFile = context.getSourceFile();
+                if (!sourceFile.spanMap) {
+                    return diagnostic;
+                }
+                const mapped = sourceFile.spanMap.originalToVirtualSpans(
+                    diagnostic,
+                    this.tsAstModule.SpanMapFeature.All
+                );
+                return (
+                    Array.from(mapped).sort((a, b) => a.fidelity - b.fidelity)[0].range ??
+                    diagnostic
+                );
             },
             ensureOriginalRange: (diagnostic: tsApiSync.Diagnostic) => {
-                return handler.mapToOriginalRange({
-                    pos: diagnostic.pos,
-                    end: diagnostic.end
-                }).range;
+                if (rangeIsVirtual(diagnostic)) {
+                    return context.mapToOriginalRange({
+                        pos: diagnostic.pos,
+                        end: diagnostic.end
+                    }).range;
+                }
+                return {
+                    start:
+                        diagnostic.startPosition ??
+                        context.svelteDocument.positionAt(diagnostic.pos),
+                    end: diagnostic.endPosition ?? context.svelteDocument.positionAt(diagnostic.end)
+                };
             }
         };
     }
 
     dispose() {
+        this.snapshot?.dispose();
         this.api.close();
     }
 }
 
-function changeExtension(path: string, newExtension: string) {
-    return path.slice(0, path.lastIndexOf('.')) + newExtension;
+function rangeIsVirtual(diagnostic: tsApiSync.Diagnostic): boolean {
+    return !!diagnostic.messageChain?.some((msg) => msg.code === CONTENT_MAPPER_UNMAPPED_CODE);
 }
 
 function getParserErrorDiagnostic(tsDoc: SvelteDocumentSnapshot): Diagnostic | undefined {
@@ -650,18 +574,6 @@ function getParserErrorDiagnostic(tsDoc: SvelteDocumentSnapshot): Diagnostic | u
     };
 }
 
-function toVirtualPath(snapshot: DocumentSnapshot) {
-    const ext = snapshot.scriptKind === ts.ScriptKind.TS ? '.ts' : '.js';
-    return normalizePath(snapshot.filePath.slice(0, -SVELTE_EXT_LENGTH) + VIRTUAL_SUFFIX + ext);
-}
-
-function toRealPath(path: string) {
-    if (!path.includes(VIRTUAL_SUFFIX)) {
-        return path;
-    }
-    return path.slice(0, -3).replace(VIRTUAL_SUFFIX, '') + '.svelte';
-}
-
 interface DiagnosticsMappingContext {
     ensureVirtualSpan(diagnostic: tsApiSync.Diagnostic): tsAst.ReadonlyTextRange | null;
     ensureOriginalRange(diagnostic: tsApiSync.Diagnostic): Range;
@@ -672,7 +584,7 @@ function mapAndFilterDiagnostics(
     tsApiModule: typeof tsApiSync,
     tsApiProject: tsApiSync.Project,
     diagnostics: tsApiSync.Diagnostic[],
-    tsDoc: SourceFileDiagnosticHandler,
+    tsDoc: SourceFileDiagnosticContext,
     mappingContext: DiagnosticsMappingContext
 ): Diagnostic[] {
     const document = tsDoc.svelteDocument;
@@ -683,7 +595,7 @@ function mapAndFilterDiagnostics(
     }
 
     // Document preprocessing failed, show parser error instead
-    // const parserErrorDiag = getParserErrorDiagnostic(sourceFile);
+    // const parserErrorDiag = getParserErrorDiagnostic(tsDoc);
     // if (parserErrorDiag) {
     //     return [parserErrorDiag];
     // }
@@ -846,7 +758,7 @@ function flattenDiagnosticMessage(diag: tsApiSync.Diagnostic, level = 0): string
 
 function moveBindingErrorMessage(
     tsDiag: tsApiSync.Diagnostic,
-    tsDoc: SourceFileDiagnosticHandler,
+    tsDoc: SourceFileDiagnosticContext,
     diagnostic: Diagnostic,
     mappingContext: DiagnosticsMappingContext
 ) {
@@ -910,6 +822,9 @@ function findDiagnosticNode(
     if (touchingNode.end === virtualPos.end) {
         return touchingNode;
     }
+    if (!touchingNode.parent) {
+        return undefined;
+    }
     let current: tsAst.Node | undefined = touchingNode.parent;
     while (current.pos === touchingNode.pos) {
         if (current.end === virtualPos.end) {
@@ -922,12 +837,12 @@ function findDiagnosticNode(
 function copyDiagnosticAndChangeNode(
     tsAstModule: typeof tsAst,
     diagnostic: tsApiSync.Diagnostic,
-    tsDoc: SourceFileDiagnosticHandler
+    tsDoc: SourceFileDiagnosticContext
 ) {
     return (node: tsAst.Node): tsApiSync.Diagnostic => {
         const start = getStartOfNode(tsAstModule, node, tsDoc.getSourceFile());
         const end = node.end;
-        const mapped = tsDoc.mapToOriginalRange({ pos: start, end }).range
+        const mapped = tsDoc.mapToOriginalRange({ pos: start, end }).range;
         return {
             ...diagnostic,
             startPosition: mapped.start,
@@ -949,7 +864,7 @@ function hasNoNegativeLines(diagnostic: Diagnostic): boolean {
 
 const generatedVarRegex = /'\$\$_\w+(\.\$on)?'/;
 
-function isNoFalsePositive(document: Document, tsDoc: SourceFileDiagnosticHandler) {
+function isNoFalsePositive(document: Document, tsDoc: SourceFileDiagnosticContext) {
     const usesPug = document.getLanguageAttribute('template') === 'pug';
 
     return (diagnostic: Diagnostic) => {
@@ -1090,7 +1005,7 @@ function isUnusedReactiveStatementLabel(
 function resolveNoopsInReactiveStatements(
     tsAstModule: typeof tsAst,
     project: tsApiSync.Project,
-    tsDoc: SourceFileDiagnosticHandler,
+    tsDoc: SourceFileDiagnosticContext,
     diagnostics: tsApiSync.Diagnostic[],
     mappingContext: DiagnosticsMappingContext
 ) {
@@ -1225,7 +1140,7 @@ function get$$PropsDef(tsAstModule: typeof tsAst, sourceFile: tsAst.SourceFile) 
 function movePropsErrorRangeBackIfNecessary(
     tsAstModule: typeof tsAst,
     diagnostic: { message: string; pos: number },
-    tsDoc: SourceFileDiagnosticHandler,
+    tsDoc: SourceFileDiagnosticContext,
     get$$PropsDefWithCache: () => ReturnType<typeof get$$PropsDef>,
     get$$PropsAliasForWithCache: () => ReturnType<typeof get$$PropsAliasForInfo>
 ): Range | undefined {

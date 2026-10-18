@@ -12,7 +12,6 @@ import { Document } from '../../../../../src/lib/documents';
 import ts from 'typescript';
 import { getPackageInfo } from '../../../../../src/importPackage';
 import assert from 'assert';
-import { ContentMapperDiagnosticsProvider } from '../../../../../src/plugins/typescript-go/features/ContentMapperDiagnosticsProvider';
 
 const isSvelte5Plus = Number(VERSION.split('.')[0]) >= 5;
 
@@ -33,9 +32,9 @@ const skips = [
 ];
 
 const providerPoolLegacy = new Map<string, SvelteCheckTSGoDiagnosticsProvider>();
-const providerPool = new Map<string, ContentMapperDiagnosticsProvider>();
+const providerPool = new Map<string, SvelteCheckTSGoDiagnosticsProvider>();
 
-describe.only('SvelteCheckTSGoDiagnosticsProvider', function () {
+describe('SvelteCheckTSGoDiagnosticsProvider', function () {
     const fixturesDir = path.join(root, 'fixtures');
     executeTests({
         dir: fixturesDir,
@@ -51,7 +50,7 @@ describe.only('SvelteCheckTSGoDiagnosticsProvider', function () {
     });
 });
 
-describe.skip('SvelteCheckTSGoDiagnosticsProvider 2', function () {
+describe('SvelteCheckTSGoDiagnosticsProvider (Content Mapper Mode)', function () {
     const fixturesDir = path.join(root, 'fixtures');
     executeTests({
         dir: fixturesDir,
@@ -67,7 +66,11 @@ describe.skip('SvelteCheckTSGoDiagnosticsProvider 2', function () {
     });
 });
 
-function executeTests(testOptions: { dir: string; workspaceDir: string; contentMapperMode: boolean }) {
+function executeTests(testOptions: {
+    dir: string;
+    workspaceDir: string;
+    contentMapperMode: boolean;
+}) {
     const { dir } = testOptions;
 
     const inputFile = path.join(dir, 'input.svelte');
@@ -107,7 +110,7 @@ function executeTests(testOptions: { dir: string; workspaceDir: string; contentM
 async function executeTest(
     inputFile: string,
     testOptions: { workspaceDir: string; dir: string },
-    plugin: ContentMapperDiagnosticsProvider | SvelteCheckTSGoDiagnosticsProvider
+    plugin: SvelteCheckTSGoDiagnosticsProvider
 ) {
     const { dir } = testOptions;
     const document = new Document(pathToUrl(inputFile), ts.sys.readFile(inputFile) || '');
@@ -141,33 +144,36 @@ function setupService(dir: string, contentMapperMode: boolean) {
         if (pool.has(tsconfig)) {
             return;
         }
-        const syncApi = await import('@typescript/native/unstable/sync');
-        const tsAst = await import('@typescript/native/unstable/ast');
-        if (contentMapperMode) {
-            const service = new ContentMapperDiagnosticsProvider(
-                syncApi,
-                tsAst,
-                tsconfig,
-                (filePath, content) => new Document(pathToUrl(filePath), content)
-            );
-            providerPool.set(tsconfig, service);
-        } else {
-            const service = new SvelteCheckTSGoDiagnosticsProvider(
-                syncApi,
-                tsAst,
-                tsconfig,
-                'svelte2tsx',
-                (filePath, content) => new Document(pathToUrl(filePath), content)
-            );
-            providerPoolLegacy.set(tsconfig, service);
-        }
+
+        const [syncApi, tsAst, tsFs, version] = await Promise.all([
+            import('@typescript/native/sync'),
+            import('@typescript/native/ast'),
+            import('@typescript/native/fs'),
+            import('@typescript/native')
+        ]);
+
+        const service = new SvelteCheckTSGoDiagnosticsProvider(
+            {
+                apiModule: syncApi,
+                astModule: tsAst,
+                fsModule: tsFs,
+                tsVersion: version.version
+            },
+            tsconfig,
+            'svelte2tsx',
+            (filePath, content) => new Document(pathToUrl(filePath), content),
+            contentMapperMode
+        );
+        pool.set(tsconfig, service);
     });
 
     return getService;
 
     function getService(dir: string) {
         const tsconfig = ts.findConfigFile(dir, ts.sys.fileExists, 'tsconfig.json')!;
-        const service = contentMapperMode ? providerPool.get(tsconfig) : providerPoolLegacy.get(tsconfig);
+        const service = contentMapperMode
+            ? providerPool.get(tsconfig)
+            : providerPoolLegacy.get(tsconfig);
         if (!service) {
             throw new Error(`Service for ${tsconfig} not found`);
         }

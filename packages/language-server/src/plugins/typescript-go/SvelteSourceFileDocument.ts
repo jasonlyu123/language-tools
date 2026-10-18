@@ -15,7 +15,10 @@ export interface MappedRange {
     fidelity: tsAst.SpanMapFidelity;
 }
 
-export interface SourceFileDiagnosticHandler {
+/**
+ * TODO Remove once we requires content-mapper setup in svelte-check
+ */
+export interface SourceFileDiagnosticContext {
     getSourceFile(): tsAst.SourceFile;
     getText(start: number, end: number): string;
     getFullText(): string;
@@ -31,7 +34,7 @@ export interface SourceFileDiagnosticHandler {
     svelteDocument: Document;
 }
 
-export class SvelteSourceFileDocument implements SourceFileDiagnosticHandler {
+export class SvelteSourceFileDocument implements SourceFileDiagnosticContext {
     private sourceFile: tsAst.SourceFile;
     svelteDocument: Document;
     private htmlAstCache: { ast: TemplateNode | null } | undefined;
