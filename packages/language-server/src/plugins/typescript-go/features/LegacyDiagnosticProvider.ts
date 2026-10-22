@@ -4,7 +4,7 @@ import { internalHelpers } from 'svelte2tsx';
 import ts from 'typescript';
 import { Position, Range } from 'vscode-languageserver-types';
 import { getPackageInfo, importSvelte } from '../../../importPackage';
-import { Document, mapRangeToOriginal } from '../../../lib/documents';
+import { Document, getNodeIfIsInStartTag, mapRangeToOriginal } from '../../../lib/documents';
 import { FileMap } from '../../../lib/documents/fileCollection';
 import { Logger } from '../../../logger';
 import { normalizePath, urlToPath } from '../../../utils';
@@ -15,8 +15,9 @@ import {
     SvelteSnapshotOptions
 } from '../../typescript/DocumentSnapshot';
 import { SourceFileDiagnosticContext } from '../SvelteSourceFileDocument';
-import { tsAst, tsFs } from '../types';
-import { isSvelteFilePath } from '../../typescript/utils';
+import { tsApiSync, tsAst, tsFs } from '../types';
+import { hasNonZeroRange, isSvelteFilePath } from '../../typescript/utils';
+import { DiagnosticCode } from '../../typescript/features/DiagnosticsProvider';
 
 export interface TS7_0_FileSystemEntries {
     files: string[];
@@ -88,11 +89,11 @@ export class SvelteSnapshotDiagnosticsContext implements SourceFileDiagnosticCon
     }
 
     mapToOriginalPos(position: number) {
-        const offset = this.tsDoc.positionAt(position);
+        const originalPos = this.tsDoc.getOriginalPosition(this.tsDoc.positionAt(position));
         return {
-            position: offset,
+            position: originalPos,
             fidelity:
-                offset.line < 0
+                originalPos.line < 0
                     ? this.tsAstModule.SpanMapFidelity.None
                     : this.tsAstModule.SpanMapFidelity.Exact
         };
@@ -183,7 +184,7 @@ export class LegacyDiagnosticApiService {
                     return {
                         files: resultFiles,
                         directories,
-                        symlinks,
+                        symlinks
                     };
                 } catch (error) {
                     Logger.error(`Error reading directory ${directory}:`, error);
@@ -383,6 +384,36 @@ export class LegacyDiagnosticApiService {
             }
             pendingChanges.changed.add(changedPath);
         }
+    }
+
+    onMapToOriginalRange(
+        file: SourceFileDiagnosticContext,
+        diagnostic: tsApiSync.Diagnostic,
+        flattenMessage: string
+    ) {
+        const result = file.mapToOriginalRange({
+            pos: diagnostic.pos,
+            end: diagnostic.end
+        }).range;
+        const document = file.svelteDocument;
+
+        if (
+            ([DiagnosticCode.MISSING_PROP, DiagnosticCode.MISSING_PROPS].includes(
+                diagnostic.code as number
+            ) ||
+                (DiagnosticCode.TYPE_X_NOT_ASSIGNABLE_TO_TYPE_Y &&
+                    flattenMessage.includes("'Properties<"))) &&
+            !hasNonZeroRange({ range: result })
+        ) {
+            const node = getNodeIfIsInStartTag(document.html, document.offsetAt(result.start));
+            if (node) {
+                // This is a "some prop missing" error on a component -> remap
+                result.start = document.positionAt(node.start + 1);
+                result.end = document.positionAt(node.start + 1 + (node.tag?.length || 1));
+            }
+        }
+
+        return result;
     }
 }
 

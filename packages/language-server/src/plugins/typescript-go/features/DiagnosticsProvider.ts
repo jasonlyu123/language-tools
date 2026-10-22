@@ -13,6 +13,7 @@ import { Document, getLineOffsets, isRangeInTag, positionAt } from '../../../lib
 import { configLoader } from '../../../lib/documents/configLoader';
 import { FileMap } from '../../../lib/documents/fileCollection';
 import {
+    isPositionEqual,
     memoize,
     normalizePath,
     passMap,
@@ -48,6 +49,7 @@ import {
     isInReactiveStatement,
     isReactiveStatement
 } from './utils';
+import { getAttributeContextAtPosition } from '../../../lib/documents/parseHtml';
 
 const CONTENT_MAPPER_UNMAPPED_CODE = 18074;
 
@@ -303,14 +305,17 @@ export class SvelteCheckTSGoDiagnosticsProvider implements DiagnosticsProvider {
                     tsDoc,
                     sourceFile
                 );
-                const mappedDiags = mapAndFilterDiagnostics(
-                    this.tsAstModule,
-                    this.tsApiModule,
-                    project,
-                    diags,
-                    handler,
-                    this.createMappingContext(handler)
-                );
+                const parserErrorDiag = getParserErrorDiagnostic(tsDoc);
+                const mappedDiags = parserErrorDiag
+                    ? [parserErrorDiag]
+                    : mapAndFilterDiagnostics(
+                          this.tsAstModule,
+                          this.tsApiModule,
+                          project,
+                          diags,
+                          handler,
+                          this.createMappingContext(handler)
+                      );
                 result.push({
                     filePath: fileName,
                     text: tsDoc.parent.getText(),
@@ -500,16 +505,18 @@ export class SvelteCheckTSGoDiagnosticsProvider implements DiagnosticsProvider {
 
     private createMappingContext(context: SourceFileDiagnosticContext): DiagnosticsMappingContext {
         if (this.legacyService) {
+            const legacyService = this.legacyService;
             return {
                 ensureVirtualSpan: (diagnostic: tsApiSync.Diagnostic) => {
                     return diagnostic;
                 },
-                ensureOriginalRange: (diagnostic: tsApiSync.Diagnostic) => {
-                    return context.mapToOriginalRange({
-                        pos: diagnostic.pos,
-                        end: diagnostic.end
-                    }).range;
-                }
+                onMapToOriginalRange: (
+                    diagnostic: tsApiSync.Diagnostic,
+                    flattenMessage: string
+                ) => {
+                    return legacyService.onMapToOriginalRange(context, diagnostic, flattenMessage);
+                },
+                isNotGenerated: isNotGeneratedVirtualSpan
             };
         }
         return {
@@ -530,7 +537,7 @@ export class SvelteCheckTSGoDiagnosticsProvider implements DiagnosticsProvider {
                     diagnostic
                 );
             },
-            ensureOriginalRange: (diagnostic: tsApiSync.Diagnostic) => {
+            onMapToOriginalRange: (diagnostic: tsApiSync.Diagnostic) => {
                 if (rangeIsVirtual(diagnostic)) {
                     return context.mapToOriginalRange({
                         pos: diagnostic.pos,
@@ -543,7 +550,8 @@ export class SvelteCheckTSGoDiagnosticsProvider implements DiagnosticsProvider {
                         context.svelteDocument.positionAt(diagnostic.pos),
                     end: diagnostic.endPosition ?? context.svelteDocument.positionAt(diagnostic.end)
                 };
-            }
+            },
+            isNotGenerated: isNotGeneratedContentMapper
         };
     }
 
@@ -576,7 +584,8 @@ function getParserErrorDiagnostic(tsDoc: SvelteDocumentSnapshot): Diagnostic | u
 
 interface DiagnosticsMappingContext {
     ensureVirtualSpan(diagnostic: tsApiSync.Diagnostic): tsAst.ReadonlyTextRange | null;
-    ensureOriginalRange(diagnostic: tsApiSync.Diagnostic): Range;
+    onMapToOriginalRange(diagnostic: tsApiSync.Diagnostic, flattenMessage: string): Range;
+    isNotGenerated(sourceText: string): (diagnostic: tsApiSync.Diagnostic) => boolean;
 }
 
 function mapAndFilterDiagnostics(
@@ -594,15 +603,7 @@ function mapAndFilterDiagnostics(
         return [];
     }
 
-    // Document preprocessing failed, show parser error instead
-    // const parserErrorDiag = getParserErrorDiagnostic(tsDoc);
-    // if (parserErrorDiag) {
-    //     return [parserErrorDiag];
-    // }
-
-    const notGenerated = isNotGenerated(sourceFile.getFullText());
-
-    const mapToVirtual = mappingContext.ensureVirtualSpan;
+    const notGenerated = mappingContext.isNotGenerated(sourceFile.getFullText());
 
     const additionalStoreDiagnostics: tsApiSync.Diagnostic[] = [];
     for (const diagnostic of diagnostics) {
@@ -612,7 +613,7 @@ function mapAndFilterDiagnostics(
             !notGenerated(diagnostic) &&
             diagnostic.fileName
         ) {
-            const virtualSpan = mapToVirtual(diagnostic);
+            const virtualSpan = mappingContext.ensureVirtualSpan(diagnostic);
             if (!virtualSpan) {
                 continue;
             }
@@ -640,20 +641,16 @@ function mapAndFilterDiagnostics(
                         pos: getStartOfNode(tsAstModule, node, sourceFile),
                         end: node.end
                     };
-                    const mapped = tsDoc.mapToOriginalRange(span);
-                    if (mapped?.fidelity !== tsAstModule.SpanMapFidelity.Exact) {
-                        continue;
-                    }
-                    additionalStoreDiagnostics.push({
-                        ...diagnostic,
-                        text:
-                            `Cannot use '${storeName}' as a store. '${storeName}' needs to be an object with a subscribe method on it.\n\n` +
-                            diagnostic.text,
-                        pos: document.offsetAt(mapped.range.start),
-                        end: document.offsetAt(mapped.range.end),
-                        startPosition: mapped.range.start,
-                        endPosition: mapped.range.end
-                    });
+                    additionalStoreDiagnostics.push(
+                        markAsNeedMapping({
+                            ...diagnostic,
+                            text:
+                                `Cannot use '${storeName}' as a store. '${storeName}' needs to be an object with a subscribe method on it.\n\n` +
+                                diagnostic.text,
+                            pos: span.pos,
+                            end: span.end
+                        })
+                    );
                 }
             }
         }
@@ -661,7 +658,7 @@ function mapAndFilterDiagnostics(
     diagnostics.push(...additionalStoreDiagnostics);
 
     diagnostics = diagnostics
-        // .filter(notGenerated)
+        .filter(notGenerated)
         .filter(
             (diagnostic) =>
                 !isUnusedReactiveStatementLabel(
@@ -717,7 +714,7 @@ function mapAndFilterDiagnostics(
             get$$PropsAliasInfoWithCache
         );
         let diagnostic: Diagnostic = {
-            range: propsErrorRedirect ?? mappingContext.ensureOriginalRange(tsDiag),
+            range: propsErrorRedirect ?? mappingContext.onMapToOriginalRange(tsDiag, message),
             severity: mapSeverity(tsDiag.category),
             source,
             message,
@@ -731,12 +728,37 @@ function mapAndFilterDiagnostics(
             continue;
         }
 
+        if (isPositionEqual(diagnostic.range.start, diagnostic.range.end)) {
+            adjustDirectiveRange(diagnostic, document);
+        }
+
         diagnostic = adjustIfNecessary(diagnostic, document.isSvelte5);
         diagnostic = swapDiagRangeStartEndIfNecessary(diagnostic);
         converted.push(diagnostic);
     }
 
     return converted;
+}
+
+function adjustDirectiveRange(diagnostic: Diagnostic, document: Document) {
+    const attributeContext = getAttributeContextAtPosition(document, diagnostic.range.start);
+    if (!attributeContext || attributeContext.inValue) {
+        return;
+    }
+
+    const colonIndex = attributeContext.name.indexOf(':');
+    if (colonIndex === -1) {
+        return;
+    }
+
+    const attributeStart = document
+        .getText()
+        .lastIndexOf(attributeContext.name, document.offsetAt(diagnostic.range.start));
+    const end = attributeStart + attributeContext.name.length;
+    const start = attributeStart + colonIndex + 1;
+
+    diagnostic.range.start = document.positionAt(start);
+    diagnostic.range.end = document.positionAt(end);
 }
 
 function flattenDiagnosticMessage(diag: tsApiSync.Diagnostic, level = 0): string {
@@ -834,6 +856,22 @@ function findDiagnosticNode(
     }
 }
 
+function markAsNeedMapping(diagnostic: tsApiSync.Diagnostic): tsApiSync.Diagnostic {
+    const fakeNonExactMapping: tsApiSync.Diagnostic = {
+        code: CONTENT_MAPPER_UNMAPPED_CODE,
+        text: '',
+        pos: 0,
+        end: 0,
+        category: ts.DiagnosticCategory.Error
+    };
+    if (diagnostic.messageChain) {
+        diagnostic.messageChain.unshift(fakeNonExactMapping);
+    } else {
+        diagnostic.messageChain = [fakeNonExactMapping];
+    }
+    return diagnostic;
+}
+
 function copyDiagnosticAndChangeNode(
     tsAstModule: typeof tsAst,
     diagnostic: tsApiSync.Diagnostic,
@@ -841,15 +879,14 @@ function copyDiagnosticAndChangeNode(
 ) {
     return (node: tsAst.Node): tsApiSync.Diagnostic => {
         const start = getStartOfNode(tsAstModule, node, tsDoc.getSourceFile());
-        const end = node.end;
-        const mapped = tsDoc.mapToOriginalRange({ pos: start, end }).range;
-        return {
+
+        return markAsNeedMapping({
             ...diagnostic,
-            startPosition: mapped.start,
-            endPosition: mapped.end,
-            pos: tsDoc.svelteDocument.offsetAt(mapped.start),
-            end: tsDoc.svelteDocument.offsetAt(mapped.end)
-        };
+            startPosition: undefined,
+            endPosition: undefined,
+            pos: start,
+            end: node.end
+        });
     };
 }
 
@@ -950,7 +987,13 @@ function swapDiagRangeStartEndIfNecessary(diag: Diagnostic): Diagnostic {
  * Checks if diagnostic is not within a section that should be completely ignored
  * because it's purely generated.
  */
-function isNotGenerated(text: string) {
+function isNotGeneratedVirtualSpan(text: string) {
+    return (diagnostic: tsApiSync.Diagnostic) => {
+        return !isInGeneratedCode(text, diagnostic.pos, diagnostic.end);
+    };
+}
+
+function isNotGeneratedContentMapper(text: string) {
     return (diagnostic: tsApiSync.Diagnostic) => {
         const hasUnMappableError = diagnostic.messageChain?.find(
             (message) => message.code === CONTENT_MAPPER_UNMAPPED_CODE
@@ -1144,7 +1187,11 @@ function movePropsErrorRangeBackIfNecessary(
     get$$PropsDefWithCache: () => ReturnType<typeof get$$PropsDef>,
     get$$PropsAliasForWithCache: () => ReturnType<typeof get$$PropsAliasForInfo>
 ): Range | undefined {
-    const possibly$$PropsError = isAfterSvelte2TsxPropsReturn(tsDoc.getFullText(), diagnostic.pos);
+    const fullText = tsDoc.getFullText();
+    if (!fullText.includes('$$Props')) {
+        return;
+    }
+    const possibly$$PropsError = isAfterSvelte2TsxPropsReturn(fullText, diagnostic.pos);
     if (!possibly$$PropsError) {
         return;
     }

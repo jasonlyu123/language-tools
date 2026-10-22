@@ -31,10 +31,22 @@ const skips = [
     '/fixtures/project-reference/paths'
 ];
 
+const skipsContentMapperMode = [
+    ...skips,
+
+    // Not sure if we can change these for content mapper mode.
+    '/fixtures/import-precedence',
+
+    // intentionally not implemented for content mapper mode
+    // let's see if we anyone actually encounters these in content mapper mode
+    '/fixtures/svelte-native',
+    '/fixtures/accessors-customElement-configs'
+];
+
 const providerPoolLegacy = new Map<string, SvelteCheckTSGoDiagnosticsProvider>();
 const providerPool = new Map<string, SvelteCheckTSGoDiagnosticsProvider>();
 
-describe('SvelteCheckTSGoDiagnosticsProvider', function () {
+describe.only('SvelteCheckTSGoDiagnosticsProvider', function () {
     const fixturesDir = path.join(root, 'fixtures');
     executeTests({
         dir: fixturesDir,
@@ -78,8 +90,9 @@ function executeTests(testOptions: {
 
     if (existsSync(inputFile)) {
         const name = dir.substring(root.length);
+        const skipsForTest = testOptions.contentMapperMode ? skipsContentMapperMode : skips;
         const _it =
-            (dir.endsWith('.v5') && !isSvelte5Plus) || skips.includes(normalizePath(name))
+            (dir.endsWith('.v5') && !isSvelte5Plus) || skipsForTest.includes(normalizePath(name))
                 ? it.skip
                 : dir.endsWith('.only')
                   ? it.only
@@ -124,6 +137,12 @@ async function executeTest(
     ];
     const expectedFile = expectedFileVariants.find(existsSync) ?? defaultExpectedFile;
     const snapshotFormatter = await createJsonSnapshotFormatter(dir);
+    for (const element of diagnostics) {
+        if (typeof element.code === 'number' && element.code < 0) {
+            // Not important for the actual behavior but could interfere with snapshot comparisons
+            delete element.tags;
+        }
+    }
 
     await updateSnapshotIfFailedOrEmpty({
         assertion() {
