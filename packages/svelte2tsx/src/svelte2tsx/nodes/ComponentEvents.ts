@@ -1,5 +1,4 @@
-import type ts from 'typescript';
-import type { TsFacade } from '../../facade';
+import type { TsFacade, ts } from '../../facade';
 import { EventHandler } from './event-handler';
 import {
     getVariableAtTopLevel,

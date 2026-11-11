@@ -1,4 +1,5 @@
 import type ts from 'typescript';
+import * as facadeAst from './facade.generate';
 
 /**
  * The type guards of the TypeScript API that svelte2tsx uses.
@@ -114,4 +115,5 @@ export const facadeMembers = [
  * - Adding a member to the facade means adding it to `facadeGuards`/`facadeMembers`,
  *   and to the TypeScript 7 implementation if it doesn't exist there under the same name and with the same semantics.
  */
-export type TsFacade = Pick<typeof ts, (typeof facadeMembers)[number]>;
+export type TsFacade = Pick<typeof facadeAst, (typeof facadeMembers)[number]>;
+export { facadeAst as ts };

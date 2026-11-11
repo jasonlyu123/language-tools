@@ -1,5 +1,4 @@
-import type ts from 'typescript';
-import { facadeGuards, facadeMembers, type TsFacade } from './facade';
+import { facadeGuards, facadeMembers, type TsFacade, type ts } from './facade';
 
 /**
  * The modules of TypeScript 7 (>= 7.1) the facade is built on.

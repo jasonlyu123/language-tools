@@ -1,6 +1,5 @@
 import MagicString from 'magic-string';
-import type ts from 'typescript';
-import type { TsFacade } from '../../facade';
+import type { TsFacade, ts } from '../../facade';
 import { nextLineOrNonWhitespace } from '../utils/tsAst';
 
 export function moveAllInstanceImports(

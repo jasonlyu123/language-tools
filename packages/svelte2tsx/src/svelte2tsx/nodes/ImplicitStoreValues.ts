@@ -1,6 +1,5 @@
 import MagicString from 'magic-string';
-import type ts from 'typescript';
-import type { TsFacade } from '../../facade';
+import type { TsFacade, ts } from '../../facade';
 import { surroundWithIgnoreComments } from '../../utils/ignore';
 import { getCurrentPrepends, preprendStr } from '../../utils/magic-string';
 import { extractIdentifiers, getNamesFromLabeledStatement } from '../utils/tsAst';

@@ -1,7 +1,6 @@
 import MagicString from 'magic-string';
 import { Node } from 'estree-walker';
-import type ts from 'typescript';
-import type { TsFacade } from '../facade';
+import type { TsFacade, ts } from '../facade';
 import { ImplicitStoreValues } from './nodes/ImplicitStoreValues';
 import { handleTypeAssertion } from './nodes/handleTypeAssertion';
 import { Generics } from './nodes/Generics';

@@ -1,7 +1,6 @@
 import MagicString from 'magic-string';
 import { Node } from 'estree-walker';
-import type ts from 'typescript';
-import type { TsFacade } from '../facade';
+import type { TsFacade, ts } from '../facade';
 import { getBinaryAssignmentExpr, isNotPropertyNameOfImport, moveNode } from './utils/tsAst';
 import { ExportedNames, is$$PropsDeclaration } from './nodes/ExportedNames';
 import { ImplicitTopLevelNames } from './nodes/ImplicitTopLevelNames';

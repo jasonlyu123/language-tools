@@ -12,8 +12,7 @@ import TemplateScope from './TemplateScope';
 import { SvelteIdentifier, WithName } from '../../interfaces';
 // @ts-ignore
 import { Directive } from 'svelte/types/compiler/interfaces';
-import type ts from 'typescript';
-import type { TsFacade } from '../../facade';
+import type { TsFacade, ts } from '../../facade';
 import { isInterfaceOrTypeDeclaration } from '../utils/tsAst';
 
 /**
