@@ -84,11 +84,14 @@ for (const element of statements) {
             isTypePredicate = true;
             const type = element.type.type.typeName.text;
             referencesType.add(type);
-        } 
+        }
         if (isTypePredicate || others.includes(element.name.text)) {
             exports.push(
                 ts.factory.createFunctionDeclaration(
-                    [ts.factory.createModifier(ts.SyntaxKind.ExportKeyword), ts.factory.createModifier(ts.SyntaxKind.DeclareKeyword)],
+                    [
+                        ts.factory.createModifier(ts.SyntaxKind.ExportKeyword),
+                        ts.factory.createModifier(ts.SyntaxKind.DeclareKeyword)
+                    ],
                     undefined,
                     element.name,
                     undefined,
@@ -104,13 +107,65 @@ for (const element of statements) {
         others.includes(element.name.text)
     ) {
         exports.push(
-            ts.factory.createEnumDeclaration(
-                [ts.factory.createModifier(ts.SyntaxKind.ExportKeyword)],
-                element.name,
-                element.members
+            ts.factory.createVariableStatement(
+                [
+                    ts.factory.createModifier(ts.SyntaxKind.ExportKeyword),
+                    ts.factory.createModifier(ts.SyntaxKind.DeclareKeyword)
+                ],
+                ts.factory.createVariableDeclarationList(
+                    [
+                        ts.factory.createVariableDeclaration(
+                            element.name,
+                            undefined,
+                            ts.factory.createUnionTypeNode([
+                                ts.factory.createTypeQueryNode(
+                                    ts.factory.createQualifiedName(
+                                        ts.factory.createIdentifier('ts'),
+                                        element.name
+                                    )
+                                ),
+                                ts.factory.createTypeQueryNode(
+                                    ts.factory.createQualifiedName(
+                                        ts.factory.createIdentifier('tsAst'),
+                                        element.name
+                                    )
+                                )
+                            ]),
+                            undefined
+                        )
+                    ],
+                    ts.NodeFlags.Const
+                )
             )
         );
-    } else if (ts.isTypeAliasDeclaration(element) && element.name && others.includes(element.name.text)) {
+        exports.push(
+            ts.factory.createTypeAliasDeclaration(
+                [ts.factory.createModifier(ts.SyntaxKind.ExportKeyword)],
+                element.name,
+                undefined,
+                ts.factory.createUnionTypeNode([
+                    ts.factory.createTypeReferenceNode(
+                        ts.factory.createQualifiedName(
+                            ts.factory.createIdentifier('ts'),
+                            element.name
+                        ),
+                        undefined
+                    ),
+                    ts.factory.createTypeReferenceNode(
+                        ts.factory.createQualifiedName(
+                            ts.factory.createIdentifier('tsAst'),
+                            element.name
+                        ),
+                        undefined
+                    )
+                ])
+            )
+        );
+    } else if (
+        ts.isTypeAliasDeclaration(element) &&
+        element.name &&
+        others.includes(element.name.text)
+    ) {
         exports.push(
             ts.factory.createTypeAliasDeclaration(
                 [ts.factory.createModifier(ts.SyntaxKind.ExportKeyword)],
@@ -119,7 +174,11 @@ for (const element of statements) {
                 element.type
             )
         );
-    } else if (ts.isInterfaceDeclaration(element) && element.name && others.includes(element.name.text)) {
+    } else if (
+        ts.isInterfaceDeclaration(element) &&
+        element.name &&
+        others.includes(element.name.text)
+    ) {
         exports.push(
             ts.factory.createInterfaceDeclaration(
                 [ts.factory.createModifier(ts.SyntaxKind.ExportKeyword)],
@@ -134,9 +193,7 @@ for (const element of statements) {
 
 const unions = Array.from(referencesType).map((type) =>
     ts.factory.createTypeAliasDeclaration(
-        [
-            ts.factory.createModifier(ts.SyntaxKind.ExportKeyword),
-        ],
+        [ts.factory.createModifier(ts.SyntaxKind.ExportKeyword)],
         type,
         undefined,
         ts.factory.createUnionTypeNode([
